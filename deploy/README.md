@@ -14,14 +14,17 @@ expose it publicly through a Cloudflare Tunnel.
 The API key is **not** stored in the plist — Next.js reads `OPENCODE_GO_API_KEY`
 from `.env.local` at runtime, so the plist stays secret-free.
 
-> ⚠️ **Quick tunnels won't work for chat.** `cloudflared tunnel --url
-> http://localhost:3001` gives you a `trycloudflare.com` subdomain with no
-> account, but per Cloudflare's docs quick tunnels do **not support
-> Server-Sent Events (SSE)**. Our `/api/chat` route streams the LLM
-> response as SSE (`createUIMessageStreamResponse`), so through a quick
-> tunnel the page loads but the chat hangs and never streams. You need
-> the **named** tunnel below (which supports SSE) for chat to work over
-> Cloudflare.
+> ⚠️ **Quick tunnels are dev-only.** `cloudflared tunnel --url
+> http://localhost:3001` gives a random `trycloudflare.com` subdomain with
+> no Cloudflare account. Per Cloudflare's docs they have a **200
+> concurrent-request limit, no uptime guarantee, and officially do not
+> support Server-Sent Events (SSE)**. Our `/api/chat` streams the LLM
+> response as SSE (`createUIMessageStreamResponse`). In practice we observed
+> SSE streaming working fine through a quick tunnel for single-user dev
+> testing (reasoning + text deltas + `[DONE]` all arrived intact) — so it's
+> fine for trying the app, but don't rely on it under load. For shared or
+> long-lived use, use the **named** tunnel below (SSE fully supported, no
+> concurrent request cap).
 >
 > To test the full app without Cloudflare, just hit the Mac directly:
 > `http://localhost:3001` (same machine) or
