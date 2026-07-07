@@ -77,8 +77,9 @@ cp .env.example .env.local
 bun dev
 ```
 
-Open <http://localhost:3000>. If port 3000 is taken (e.g. by a WhatsApp
-bridge on this machine), start on another port:
+Open <http://localhost:3000>. On this Mac, port 3000 is occupied by the Hermes
+gateway, so the app runs on **3001** by default — the included `Makefile` and
+launchd plist both use `PORT=3001`. To pick another port:
 
 ```bash
 PORT=3001 bun dev   # or: bun dev -- -p 3001
@@ -89,6 +90,8 @@ PORT=3001 bun dev   # or: bun dev -- -p 3001
 ```bash
 bun run build
 bun run start
+# defaults to 3000; on this Mac use:
+#   PORT=3001 bun run start
 ```
 
 ## Configuration
@@ -156,7 +159,7 @@ Cloudflare Tunnel for HTTPS without exposing the Mac's IP.
 ```bash
 # 1. Build & start the prod server
 bun run build
-bun run start                # http://localhost:3000
+PORT=3001 bun run start        # http://localhost:3001 (3000 is the Hermes gateway)
 
 # 2. Install & authenticate cloudflared
 brew install cloudflared
@@ -171,7 +174,7 @@ cloudflared tunnel route dns ontario-land-use-chat chat.yourdomain.com
 #    credentials-file: /Users/amanv/.cloudflared/<TUNNEL_UUID>.json
 #    ingress:
 #      - hostname: chat.yourdomain.com
-#        service: http://localhost:3000
+#        service: http://localhost:3001
 #      - service: http_status:404
 
 # 5. Run it

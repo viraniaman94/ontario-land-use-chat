@@ -1,0 +1,40 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.user.cloudflare-tunnel-chat</string>
+
+  <!--
+    cloudflared reads ~/.cloudflared/config.yml to find the tunnel UUID,
+    credentials file, and ingress rules. Make sure config.yml exists and
+    points hostname chat.<yourdomain>.com at http://localhost:3000.
+  -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/opt/homebrew/bin/cloudflared</string>
+    <string>tunnel</string>
+    <string>run</string>
+    <string>ontario-land-use-chat</string>
+  </array>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>KeepAlive</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/cloudflared-chat.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/cloudflared-chat.err</string>
+</dict>
+</plist>
