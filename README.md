@@ -1,36 +1,205 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Ontario Land Use Planning Feasibility Agent
 
-## Getting Started
+A chat application that packages the
+[`ontario-land-use-feasibility`](https://github.com/) Hermes skill into a
+deployable web UI. Ask it about a proposed development — site location,
+municipality, proposed land use, scale — and the agent assesses feasibility
+against provincial policy, official plans, and zoning by-laws, reading 41
+planning documents on demand and returning cited findings with a verdict
+(GO / CONDITIONAL GO / CAUTION / NO-GO).
 
-First, run the development server:
+## How it works
+
+```
+User message
+   →  POST /api/chat  (streaming, SSE)
+   →  system prompt built from SKILL.md + document index + report template
+   →  GLM-5.2 (OpenCode Go, OpenAI-compatible) streams a response
+   →  when the model needs a document, it calls a server-side tool:
+        listDocuments()      — returns the document index
+        searchDocuments(q)   — grep the index for matching entries
+        readDocument(path)   — reads a PDF/HTML/MD file from disk
+   →  tokens stream back to the browser and render as markdown
+```
+
+Planning documents are **read from disk** — they are not bundled, uploaded,
+or sent to a vector store. The app expects the Hermes skill to be installed
+at `~/.hermes/skills/ontario-land-use-feasibility/documents/` (269 MB across
+41 files).
+
+## Tech stack
+
+- **Next.js 16** (App Router, route handlers, Turbopack)
+- **React 19**
+- **shadcn/ui v4** on **Tailwind CSS v4** (sidebar, sheet, button, textarea,
+  card, scroll-area, separator, avatar, skeleton, sonner, tooltip)
+- **AI SDK v7** (`ai`, `@ai-sdk/react`, `@ai-sdk/openai-compatible`)
+- **pdf-parse** for PDF text extraction
+- **react-markdown** + **remark-gfm** for rendering assistant messages
+  (tables, headings, lists)
+- **TypeScript**, **Bun**
+
+## LLM provider
+
+The agent talks to OpenCode Go's OpenAI-compatible endpoint:
+
+| Setting        | Value                                   |
+|----------------|-----------------------------------------|
+| Base URL       | `https://opencode.ai/zen/go/v1`         |
+| Endpoint       | `POST /chat/completions`                |
+| Model          | `glm-5.2`                               |
+| Env var        | `OPENCODE_GO_API_KEY`                   |
+
+Override the base URL with `OPENCODE_GO_BASE_URL` if you have a custom
+upstream. See `lib/ai-provider.ts`.
+
+## Prerequisites
+
+- **Bun 1.3+** — `brew install bun`
+- **Node 18+** (for Next.js tooling)
+- A valid `OPENCODE_GO_API_KEY`
+- The Hermes land-use skill installed at
+  `~/.hermes/skills/ontario-land-use-feasibility/` (with `SKILL.md`,
+  `documents/`, `templates/feasibility-report.md`)
+
+## Install
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
+cd ontario-land-use-chat
+bun install
+cp .env.example .env.local
+# edit .env.local and paste your OPENCODE_GO_API_KEY
+```
+
+## Run locally
+
+```bash
 bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open <http://localhost:3000>. If port 3000 is taken (e.g. by a WhatsApp
+bridge on this machine), start on another port:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+PORT=3001 bun dev   # or: bun dev -- -p 3001
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Production build & start
 
-## Learn More
+```bash
+bun run build
+bun run start
+```
 
-To learn more about Next.js, take a look at the following resources:
+## Configuration
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+| Variable                 | Required | Default                              | Notes                          |
+|--------------------------|----------|--------------------------------------|--------------------------------|
+| `OPENCODE_GO_API_KEY`    | yes      | —                                    | API key for OpenCode Go        |
+| `OPENCODE_GO_BASE_URL`   | no       | `https://opencode.ai/zen/go/v1`      | Override upstream base URL     |
+| `PORT`                   | no       | `3000`                               | Next.js listen port            |
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## How documents work
 
-## Deploy on Vercel
+The agent never uploads PDFs to the LLM. Instead:
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+1. The system prompt embeds the full **document index**
+   (`documents/document-index.md`) so the model knows what exists and the
+   relative paths to use.
+2. The model calls `readDocument(relPath)` to pull a specific file.
+   The route handler resolves the path under
+   `~/.hermes/skills/ontario-land-use-feasibility/documents/` (with path
+   traversal protection), extracts text (PDF via `pdf-parse`, HTML tags
+   stripped, markdown read directly), truncates to 50,000 chars, and
+   returns it as the tool result.
+3. Read documents are cached in-memory for the server's lifetime.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## Conversation history
+
+Conversations are stored in **`localStorage`** (no backend persistence in
+v1). The left sidebar lists past chats titled by the first user message.
+Use **New assessment** to start a fresh one; the trash icon deletes a
+conversation. Refreshing the page persists everything.
+
+## Architecture
+
+```
+app/
+  layout.tsx                  Root layout, fonts, TooltipProvider
+  page.tsx                    Client page: SidebarProvider + Chat
+  api/chat/route.ts           Streaming chat route (nodejs runtime)
+components/
+  chat/                       chat-header, chat-messages, chat-input,
+                              chat-message, chat-sidebar, chat
+  ui/                         shadcn/ui primitives
+hooks/
+  use-conversations.ts        localStorage conversation store
+  use-mobile.ts              Breakpoint hook (shadcn sidebar)
+lib/
+  ai-provider.ts              OpenCode Go provider config
+  agent/
+    document-service.ts       Read documents from skill dir (path-safe)
+    system-prompt.ts         Build system prompt from SKILL.md + index
+    tools.ts                 listDocuments / searchDocuments / readDocument
+  utils.ts                    cn() helper
+```
+
+## Deployment
+
+### On this Mac via Cloudflare Tunnel (recommended)
+
+The app reads documents from the local filesystem, so it must run on a
+machine that has the skill installed. This MacBook (M2 Max, always-on) is
+ideal. Run the production server natively and expose it through a
+Cloudflare Tunnel for HTTPS without exposing the Mac's IP.
+
+```bash
+# 1. Build & start the prod server
+bun run build
+bun run start                # http://localhost:3000
+
+# 2. Install & authenticate cloudflared
+brew install cloudflared
+cloudflared tunnel login     # pick a hostname on your Cloudflare zone
+
+# 3. Create the tunnel and route DNS
+cloudflared tunnel create ontario-land-use-chat
+cloudflared tunnel route dns ontario-land-use-chat chat.yourdomain.com
+
+# 4. Configure ~/.cloudflared/config.yml
+#    tunnel: <TUNNEL_UUID>
+#    credentials-file: /Users/amanv/.cloudflared/<TUNNEL_UUID>.json
+#    ingress:
+#      - hostname: chat.yourdomain.com
+#        service: http://localhost:3000
+#      - service: http_status:404
+
+# 5. Run it
+cloudflared tunnel run ontario-land-use-chat
+```
+
+See `Task 9` in the plan for `launchd` plists that keep both the Next.js
+server and the tunnel alive across reboots.
+
+### Other platforms
+
+Any host with filesystem access to the skill's `documents/` directory works
+(a VPS, a Docker container with a mounted volume, etc.). Pure serverless
+platforms (Vercel functions, Cloudflare Workers) won't work because the
+route handler reads large PDFs from the local disk.
+
+## Limitations & known gaps
+
+- **PDF extraction quality** — `pdf-parse` may produce messy output for
+  complex zoning by-law tables. The plan notes `marker-pdf` / `mupdf` as a
+  fallback if needed.
+- **Token budget** — documents are truncated to 50K chars per read. GLM-5.2
+  has a large context window, but reading many full PDFs in one assessment
+  can get expensive. The system prompt tells the model to read selectively.
+- **No pagination** — the v1 `readDocument` tool returns a truncated prefix.
+  An optional `offset`/`limit` could be added for paging long PDFs.
+- **No auth** — v1 has no user authentication; anyone who can reach the
+  tunnel can use the agent and consume API credits. Add Cloudflare Access
+  (`cloudflared access`) in front of the tunnel for protection.
+- **Preliminary assessment only** — findings must be reviewed by a
+  registered professional planner (RPP) before relying on them.
