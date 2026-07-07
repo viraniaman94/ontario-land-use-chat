@@ -10,6 +10,7 @@ import {
   SidebarGroupLabel,
   SidebarHeader,
   SidebarMenu,
+  SidebarMenuAction,
   SidebarMenuButton,
   SidebarMenuItem,
 } from "@/components/ui/sidebar";
@@ -83,18 +84,18 @@ export function ChatSidebar({
                     <MessageSquare className="h-4 w-4 shrink-0" />
                     <span className="truncate">{conv.title}</span>
                   </SidebarMenuButton>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    className="ml-auto h-6 w-6 shrink-0 text-muted-foreground hover:text-destructive group-data-[collapsible=icon]:hidden"
+                  <SidebarMenuAction
+                    title="Delete conversation"
+                    aria-label={`Delete ${conv.title}`}
                     onClick={(e) => {
                       e.stopPropagation();
                       onDelete(conv.id);
                     }}
-                    aria-label={`Delete ${conv.title}`}
+                    showOnHover
+                    className="text-muted-foreground hover:bg-sidebar-accent hover:text-destructive"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
-                  </Button>
+                  </SidebarMenuAction>
                 </SidebarMenuItem>
               ))}
             </SidebarMenu>
