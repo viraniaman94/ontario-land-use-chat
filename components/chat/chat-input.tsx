@@ -6,10 +6,12 @@ import { Textarea } from "@/components/ui/textarea";
 
 interface ChatInputProps {
   onSend: (text: string) => void;
+  onStop?: () => void;
   disabled?: boolean;
+  isStreaming?: boolean;
 }
 
-export function ChatInput({ onSend, disabled }: ChatInputProps) {
+export function ChatInput({ onSend, onStop, disabled, isStreaming }: ChatInputProps) {
   const [input, setInput] = useState("");
 
   const handleSubmit = (e: FormEvent) => {
@@ -39,13 +41,24 @@ export function ChatInput({ onSend, disabled }: ChatInputProps) {
           rows={2}
           disabled={disabled}
         />
-        <Button
-          type="submit"
-          size="lg"
-          disabled={disabled || !input.trim()}
-        >
-          Send
-        </Button>
+        {isStreaming && onStop ? (
+          <Button
+            type="button"
+            size="lg"
+            variant="destructive"
+            onClick={onStop}
+          >
+            Stop
+          </Button>
+        ) : (
+          <Button
+            type="submit"
+            size="lg"
+            disabled={disabled || !input.trim()}
+          >
+            Send
+          </Button>
+        )}
       </div>
       <p className="mt-2 text-center text-xs text-muted-foreground">
         Enter to send · Shift+Enter for new line
