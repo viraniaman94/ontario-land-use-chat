@@ -17,6 +17,7 @@ export const opencodeGo = createOpenAICompatible({
   name: "opencode-go",
   baseURL: process.env.OPENCODE_GO_BASE_URL || "https://opencode.ai/zen/go/v1",
   apiKey: process.env.OPENCODE_GO_API_KEY,
+  chatEndpoint: "/chat/completions",
 });
 
 /** Default model identifier used across the application. */
