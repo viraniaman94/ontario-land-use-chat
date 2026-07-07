@@ -156,6 +156,16 @@ machine that has the skill installed. This MacBook (M2 Max, always-on) is
 ideal. Run the production server natively and expose it through a
 Cloudflare Tunnel for HTTPS without exposing the Mac's IP.
 
+> ⚠️ **Don't use a quick tunnel for chat.** `cloudflared tunnel --url
+> http://localhost:3001` is the no-account shortcut, but per Cloudflare's
+> docs quick tunnels **do not support Server-Sent Events (SSE)**. Our
+> `/api/chat` streams the LLM response as SSE, so through a quick tunnel
+> the page renders but `useChat` hangs forever waiting for tokens. You must
+> use the **named** tunnel steps below (SSE supported) for chat to work over
+> Cloudflare. To try the app without Cloudflare at all, just open
+> `http://localhost:3001` (or `http://192.168.2.15:3001` from another device
+> on your LAN).
+
 ```bash
 # 1. Build & start the prod server
 bun run build
