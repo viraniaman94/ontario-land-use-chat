@@ -27,7 +27,14 @@ export const runtime = "nodejs";
 export const maxDuration = 300;
 
 export async function POST(request: Request) {
-  const { messages } = (await request.json()) as { messages: UIMessage[] };
+  const body = (await request.json()) as { messages?: UIMessage[] };
+  const messages = body.messages;
+  if (!Array.isArray(messages) || messages.length === 0) {
+    return new Response(
+      JSON.stringify({ error: "messages must be a non-empty array of UIMessages" }),
+      { status: 400, headers: { "Content-Type": "application/json" } },
+    );
+  }
 
   const system = buildSystemPrompt();
 
