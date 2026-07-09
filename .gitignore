@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# Cloudflare quick tunnel runtime artifacts (written by deploy/scripts/start-tunnel.sh)
+/.tunnel-url.txt
+/.tunnel-url.log

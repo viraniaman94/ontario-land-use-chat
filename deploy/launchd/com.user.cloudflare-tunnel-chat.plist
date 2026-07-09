@@ -7,20 +7,30 @@
   <string>com.user.cloudflare-tunnel-chat</string>
 
   <!--
-    cloudflared reads ~/.cloudflared/config.yml to find the tunnel UUID,
-    credentials file, and ingress rules. Make sure config.yml exists and
-    points hostname chat.<yourdomain>.com at http://localhost:3000.
+    Runs deploy/scripts/start-tunnel.sh, which launches a Cloudflare QUICK
+    tunnel to http://localhost:3001 and writes the assigned public
+    trycloudflare.com URL to:
+
+      ~/.hermes/ontario-land-use-chat-tunnel-url.txt
+
+    Quick tunnels need no Cloudflare account but issue a RANDOM subdomain on
+    every start; the URL file is rewritten each time a new URL is emitted.
+    For a stable hostname, set up a named tunnel via `make tunnel-login` and
+    switch this plist back to `cloudflared tunnel run ontario-land-use-chat`.
   -->
+  <key>WorkingDirectory</key>
+  <string>/Users/amanv/projects/ontario-land-use-chat</string>
+
   <key>ProgramArguments</key>
   <array>
-    <string>/opt/homebrew/bin/cloudflared</string>
-    <string>tunnel</string>
-    <string>run</string>
-    <string>ontario-land-use-chat</string>
+    <string>/bin/bash</string>
+    <string>/Users/amanv/projects/ontario-land-use-chat/deploy/scripts/start-tunnel.sh</string>
   </array>
 
   <key>EnvironmentVariables</key>
   <dict>
+    <key>HOME</key>
+    <string>/Users/amanv</string>
     <key>PATH</key>
     <string>/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin</string>
   </dict>
@@ -31,6 +41,8 @@
   <key>KeepAlive</key>
   <true/>
 
+  <!-- The script does its own logging to ~/.hermes; these capture any stray
+       output if the script itself fails before exec'ing cloudflared. -->
   <key>StandardOutPath</key>
   <string>/tmp/cloudflared-chat.log</string>
 
