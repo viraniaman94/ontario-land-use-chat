@@ -30,10 +30,24 @@ export async function POST(request: Request) {
   const body = (await request.json()) as { messages?: UIMessage[] };
   const messages = body.messages;
   if (!Array.isArray(messages) || messages.length === 0) {
-    return new Response(
-      JSON.stringify({ error: "messages must be a non-empty array of UIMessages" }),
-      { status: 400, headers: { "Content-Type": "application/json" } },
-    );
+    return jsonError(400, "messages must be a non-empty array of UIMessages");
+  }
+
+  // ai@7 UIMessages carry content in a `parts` array (not a `content` string).
+  // convertToModelMessages throws a cryptic "Cannot read properties of
+  // undefined (reading 'map')" when `parts` is missing — e.g. if a client
+  // posts the legacy { role, content } shape. Guard up front with a clear 400.
+  for (const m of messages) {
+    if (
+      !m ||
+      (m.role !== "user" && m.role !== "assistant" && m.role !== "system") ||
+      !Array.isArray(m.parts)
+    ) {
+      return jsonError(
+        400,
+        "each message must be a UIMessage with a `role` (user|assistant|system) and a `parts` array",
+      );
+    }
   }
 
   const system = buildSystemPrompt();
@@ -51,5 +65,12 @@ export async function POST(request: Request) {
 
   return createUIMessageStreamResponse({
     stream: result.toUIMessageStream(),
+  });
+}
+
+function jsonError(status: number, error: string): Response {
+  return new Response(JSON.stringify({ error }), {
+    status,
+    headers: { "Content-Type": "application/json" },
   });
 }
