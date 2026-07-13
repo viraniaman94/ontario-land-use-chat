@@ -43,3 +43,11 @@ next-env.d.ts
 # Cloudflare quick tunnel runtime artifacts (written by deploy/scripts/start-tunnel.sh)
 /.tunnel-url.txt
 /.tunnel-url.log
+
+# Marker PDF -> Markdown conversion output + quality reports
+/converted-docs/
+/scripts/convert-report.json
+/scripts/convert-report.csv
+
+# Pi subagent artifacts
+/.pi-subagents/

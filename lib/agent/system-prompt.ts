@@ -9,7 +9,7 @@ import { listDocuments, getSkillDir } from "./document-service";
  * Combines:
  *  - Agent identity
  *  - SKILL.md content (the 10-step assessment procedure)
- *  - Document index (list of available planning documents)
+ *  - Document navigation index (sections-index.md)
  *  - Feasibility report template
  *  - 10 critical rules the agent must follow
  */
@@ -32,9 +32,29 @@ ${skillMd}
 
 ---
 
-# Available Documents
+# Document Knowledge Base — Navigation Guide
 
-The following planning documents are available in your knowledge base. Use the readDocument tool to read any of them. Use listDocuments to see this index again. Use searchDocuments to search for documents by keyword.
+The planning documents are stored as Markdown files in the documents directory. **Large documents have been split into individual section files** so you can load only the relevant sections instead of entire 200–900 KB documents.
+
+## How to Navigate Documents
+
+1. **Call \`listDocuments()\`** to get the top-level sections index — it lists every document, its section count, and the path to its section index.
+2. **Read a document's \`_index.md\`** (e.g., \`provincial/pps-2024/_index.md\`) to see all sections with 1-line summaries. This tells you which section files are relevant to your assessment.
+3. **Read individual section files** (e.g., \`provincial/pps-2024/06-22-housing.md\`) to get the actual policy text. Each section file is typically 2–80 KB.
+4. **Use \`searchDocuments(query)\`** to find sections across all documents matching keywords (e.g., "setback residential" or "Greenbelt agriculture").
+5. **Full documents** are also available (e.g., \`provincial/pps-2024.md\`) if you need the complete text, but prefer section files to keep context small.
+
+### Document Hierarchy
+
+When assessing a project, check documents in this order:
+- **Layer 1:** PPS 2024 (\`provincial/pps-2024/\`) — applies to all projects
+- **Layer 2:** Provincial Plans (Greenbelt, ORMCP, NEP) — if geographically applicable
+- **Layer 3:** Upper-tier Official Plan (County/Region) — if two-tier municipality
+- **Layer 4:** Lower-tier or single-tier Official Plan
+- **Layer 5:** Zoning By-law
+- **Layer 6:** Overlays (conservation, heritage, hazards)
+
+## Top-Level Document Index
 
 ${documentIndex}
 

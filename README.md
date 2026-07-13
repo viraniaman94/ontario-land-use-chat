@@ -14,11 +14,11 @@ planning documents on demand and returning cited findings with a verdict
 User message
    →  POST /api/chat  (streaming, SSE)
    →  system prompt built from SKILL.md + document index + report template
-   →  GLM-5.2 (OpenCode Go, OpenAI-compatible) streams a response
+   →  GLM-5.2 (Ollama Cloud, OpenAI-compatible) streams a response
    →  when the model needs a document, it calls a server-side tool:
         listDocuments()      — returns the document index
         searchDocuments(q)   — grep the index for matching entries
-        readDocument(path)   — reads a PDF/HTML/MD file from disk
+        readDocument(path)   — reads a Markdown/PDF/HTML file from disk
    →  tokens stream back to the browser and render as markdown
 ```
 
@@ -34,30 +34,30 @@ at `~/.hermes/skills/ontario-land-use-feasibility/documents/` (269 MB across
 - **shadcn/ui v4** on **Tailwind CSS v4** (sidebar, sheet, button, textarea,
   card, scroll-area, separator, avatar, skeleton, sonner, tooltip)
 - **AI SDK v7** (`ai`, `@ai-sdk/react`, `@ai-sdk/openai-compatible`)
-- **pdf-parse** for PDF text extraction
+- **pdf-parse** for PDF text extraction (fallback when a Marker-converted Markdown version isn't available)
 - **react-markdown** + **remark-gfm** for rendering assistant messages
   (tables, headings, lists)
 - **TypeScript**, **Bun**
 
 ## LLM provider
 
-The agent talks to OpenCode Go's OpenAI-compatible endpoint:
+The agent talks to Ollama Cloud's OpenAI-compatible endpoint:
 
 | Setting        | Value                                   |
 |----------------|-----------------------------------------|
-| Base URL       | `https://opencode.ai/zen/go/v1`         |
+| Base URL       | `https://ollama.com/v1`                 |
 | Endpoint       | `POST /chat/completions`                |
 | Model          | `glm-5.2`                               |
-| Env var        | `OPENCODE_GO_API_KEY`                   |
+| Env var        | `OLLAMA_API_KEY`                        |
 
-Override the base URL with `OPENCODE_GO_BASE_URL` if you have a custom
+Override the base URL with `OLLAMA_BASE_URL` if you have a custom
 upstream. See `lib/ai-provider.ts`.
 
 ## Prerequisites
 
 - **Bun 1.3+** — `brew install bun`
 - **Node 18+** (for Next.js tooling)
-- A valid `OPENCODE_GO_API_KEY`
+- A valid `OLLAMA_API_KEY`
 - The Hermes land-use skill installed at
   `~/.hermes/skills/ontario-land-use-feasibility/` (with `SKILL.md`,
   `documents/`, `templates/feasibility-report.md`)
@@ -68,7 +68,7 @@ upstream. See `lib/ai-provider.ts`.
 cd ontario-land-use-chat
 bun install
 cp .env.example .env.local
-# edit .env.local and paste your OPENCODE_GO_API_KEY
+# edit .env.local and paste your OLLAMA_API_KEY
 ```
 
 ## Run locally
@@ -98,9 +98,43 @@ bun run start
 
 | Variable                 | Required | Default                              | Notes                          |
 |--------------------------|----------|--------------------------------------|--------------------------------|
-| `OPENCODE_GO_API_KEY`    | yes      | —                                    | API key for OpenCode Go        |
-| `OPENCODE_GO_BASE_URL`   | no       | `https://opencode.ai/zen/go/v1`      | Override upstream base URL     |
+| `OLLAMA_API_KEY`         | yes      | —                                    | API key for Ollama Cloud       |
+| `OLLAMA_BASE_URL`        | no       | `https://ollama.com/v1`              | Override upstream base URL     |
 | `PORT`                   | no       | `3000`                               | Next.js listen port            |
+| `LAND_USE_DOCS_DIR`      | no       | `./converted-docs` or skill `documents/` | Directory of Marker-converted Markdown files. Defaults to `<repo>/converted-docs` if present, otherwise falls back to the original skill PDF/HTML documents dir. Override to point at a custom location. |
+
+## Converting planning PDFs to LLM-friendly Markdown
+
+The `.pdf` planning documents are heavy on tables (zoning schedules, land-use
+stats, maps). For higher retrieval/LLM quality you can batch-convert them to
+structured Markdown using [Marker](https://github.com/datalab-to/marker) with
+its `--use_llm` mode, routed through the same OpenCode Go subscription
+(OpenAI-compatible endpoint) using `deepseek-v4-flash`.
+
+```bash
+# preview the file list (no conversion)
+make convert-docs-dry
+
+# resumable batch convert of all 38 PDFs under the skill docs dir,
+# writing ./converted-docs/<relpath>.md + a table-quality report
+make convert-docs
+
+# scanned/image PDFs (adds --force_ocr)
+make convert-docs-ocr
+
+# custom folder + output + 2 parallel jobs
+make convert-docs-dir INPUT=./pdfs OUTPUT=./md JOBS=2
+# swap the model + provider for this run
+OLLAMA_MODEL=deepseek-v4-flash make convert-docs
+```
+
+`scripts/convert_pdfs.py` reads `OLLAMA_API_KEY` from `.env.local`, runs
+Marker via `uvx --from marker-pdf marker_single` (isolated env, no project
+deps added), mirrors the input tree into the output dir, and is resumable
+(existing `.md` is skipped unless `--force`). Per-file table/row/char counts
+are written to `scripts/convert-report.{json,csv}`. See
+`scripts/requirements.txt` if you prefer to install `marker-pdf` on your PATH
+and set `MARKER_CMD=marker_single`.
 
 ## How documents work
 
@@ -110,11 +144,15 @@ The agent never uploads PDFs to the LLM. Instead:
    (`documents/document-index.md`) so the model knows what exists and the
    relative paths to use.
 2. The model calls `readDocument(relPath)` to pull a specific file.
-   The route handler resolves the path under
-   `~/.hermes/skills/ontario-land-use-feasibility/documents/` (with path
-   traversal protection), extracts text (PDF via `pdf-parse`, HTML tags
-   stripped, markdown read directly), truncates to 50,000 chars, and
-   returns it as the tool result.
+   The route handler resolves the path with transparent content mapping:
+   **.pdf** files are first looked up as `.md` replacements under the
+   Marker-converted directory (`./converted-docs/<relpath>.md`); if found,
+   the structured Markdown is returned (tables preserved as GFM). If no
+   Markdown conversion exists yet, it falls back to extracting text from
+   the original PDF via `pdf-parse`. **.html** files are always read from
+   the original skill documents directory (Marker does not convert HTML).
+   All paths are validated with traversal protection. Results are truncated
+   to 50,000 chars and cached for the server's lifetime.
 3. Read documents are cached in-memory for the server's lifetime.
 
 ## Conversation history
@@ -139,7 +177,7 @@ hooks/
   use-conversations.ts        localStorage conversation store
   use-mobile.ts              Breakpoint hook (shadcn sidebar)
 lib/
-  ai-provider.ts              OpenCode Go provider config
+  ai-provider.ts              Ollama Cloud provider config
   agent/
     document-service.ts       Read documents from skill dir (path-safe)
     system-prompt.ts         Build system prompt from SKILL.md + index
@@ -210,8 +248,11 @@ route handler reads large PDFs from the local disk.
 ## Limitations & known gaps
 
 - **PDF extraction quality** — `pdf-parse` may produce messy output for
-  complex zoning by-law tables. The plan notes `marker-pdf` / `mupdf` as a
-  fallback if needed.
+  complex zoning by-law tables. The agent now reads Marker-converted
+  Markdown (`./converted-docs/<relpath>.md`) when available, which
+  handles tables, headings, and structure far better. `pdf-parse` remains
+  the fallback when a Markdown conversion hasn't been generated yet or
+  when reading uncached HTML documents.
 - **Token budget** — documents are truncated to 50K chars per read. GLM-5.2
   has a large context window, but reading many full PDFs in one assessment
   can get expensive. The system prompt tells the model to read selectively.

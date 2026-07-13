@@ -6,7 +6,7 @@ import {
   type UIMessage,
 } from "ai";
 
-import { opencodeGo, MODEL_ID } from "@/lib/ai-provider";
+import { ollamaCloud, MODEL_ID } from "@/lib/ai-provider";
 import { buildSystemPrompt } from "@/lib/agent/system-prompt";
 import { agentTools } from "@/lib/agent/tools";
 
@@ -55,7 +55,7 @@ export async function POST(request: Request) {
   const modelMessages = await convertToModelMessages(messages);
 
   const result = streamText({
-    model: opencodeGo.chatModel(MODEL_ID),
+    model: ollamaCloud.chatModel(MODEL_ID),
     system,
     messages: modelMessages,
     tools: agentTools,

@@ -11,7 +11,7 @@ expose it publicly through a Cloudflare Tunnel.
 - `launchd/com.user.cloudflare-tunnel-chat.plist` — keeps `cloudflared
   tunnel run` alive across reboots. Install to `~/Library/LaunchAgents/`.
 
-The API key is **not** stored in the plist — Next.js reads `OPENCODE_GO_API_KEY`
+The API key is **not** stored in the plist — Next.js reads `OLLAMA_API_KEY`
 from `.env.local` at runtime, so the plist stays secret-free.
 
 > ⚠️ **Quick tunnels are dev-only.** `cloudflared tunnel --url

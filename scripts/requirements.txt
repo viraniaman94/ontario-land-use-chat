@@ -1,0 +1,12 @@
+# Batch PDF -> Markdown conversion via Marker + an OpenAI-compatible LLM.
+# Marker is Python-only and pulls in torch/surya (~heavy), so by default the
+# converter runs it through `uvx` in an isolated environment and does NOT add
+# these deps to the Next.js project. Install explicitly only if you want the
+# `marker_single` command on your PATH:
+#
+#   uv tool install marker-pdf         # then set MARKER_CMD=marker_single
+#   # or: uv pip install marker-pdf     # into an active venv
+#
+# marker-pdf 1.10.2 — Convert PDF to markdown + JSON quickly with high accuracy.
+# https://github.com/datalab-to/marker
+marker-pdf==1.10.2
