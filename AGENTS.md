@@ -1,5 +1,11 @@
 # Ontario Land Use Planning Chat
 
+> **Maintenance directive:** Keep this file accurate. When you add/remove/rename
+> a file, change a dependency, update a script, or alter the architecture —
+> update the relevant section in the same change. Prune stale notes. Keep under
+> 16 KB / 300 lines; consolidate or link to a sub-doc if it grows. Don't let
+> it rot.
+
 A React Router v8 chat app wrapping an AI agent that assesses whether proposed
 development projects are feasible under Ontario's land use planning framework
 (provincial policy, provincial plans, municipal official plans, zoning
@@ -255,6 +261,7 @@ bun run cf:build          # CLOUDFLARE=1 react-router build
 bun run cf:deploy         # build + wrangler deploy
 bun run cf:tail           # wrangler tail (live logs)
 bun run r2:upload         # upload docs to R2 bucket
+bun run setup:hooks       # (re)install git hooks (pre-commit size guard + pre-push deploy)
 ```
 
 Dev server runs on **port 5173** (Vite default). Production server defaults to
@@ -263,6 +270,11 @@ Hermes gateway on 3000).
 
 ## Conventions / Gotchas
 
+- **Always use `bun`, never `npm` or `npx`.** This project uses Bun as
+  its package manager and runtime. The `bun.lock` is the source of truth;
+  `package-lock.json` is stale and should not be relied upon. Run scripts with
+  `bun run <script>`, install deps with `bun install`, and run ad-hoc binaries
+  with `bunx` (not `npx`).
 - **`UIMessage` carries content in `parts`, not `content`.** The chat route
   explicitly validates this and returns 400 if legacy `{ role, content }`
   messages are posted.
@@ -281,11 +293,8 @@ Hermes gateway on 3000).
   `pi-thinking-text`, `pi-tool-pending/error/success`, `pi-diff-added/removed/
   context`, `pi-md-heading/code/link/quote/list-bullet` — defined in
   `app/globals.css`.
-- **Stale deploy artifacts:** `deploy/launchd/com.user.ontario-land-use-chat.plist`
-  and the Makefile `logs` target reference Next.js paths (`.next/`, `next start`)
-  — these are from a previous framework version and need updating.
-- **`use-conversations.ts` is vestigial** — contains only the `ConversationMeta`
-  type. CRUD logic lives in the route component (`_auth._index.tsx`) and API
+- **`use-conversations.ts` is vestigial** — contains only the
+  `ConversationMeta` type. CRUD logic lives in the route component and API
   routes.
-- The skill dir (`~/.hermes/skills/...`) is environment-specific and untracked —
-  code assumes it exists on the host. Don't hardcode its contents.
+- The skill dir (`~/.hermes/skills/...`) is environment-specific and untracked.
+  Don't hardcode its contents.

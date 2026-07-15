@@ -14,7 +14,8 @@
     "cf:typegen": "CLOUDFLARE=1 wrangler types && react-router typegen",
     "cf:deploy": "CLOUDFLARE=1 react-router build && wrangler deploy",
     "cf:tail": "wrangler tail",
-    "r2:upload": "node scripts/upload-to-r2.mjs"
+    "r2:upload": "node scripts/upload-to-r2.mjs",
+    "setup:hooks": "bun scripts/setup-hooks.mjs"
   },
   "dependencies": {
     "@ai-sdk/openai-compatible": "^3.0.5",

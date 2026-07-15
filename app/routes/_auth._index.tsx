@@ -44,10 +44,10 @@ export default function Home() {
   const persistedIdsRef = useRef(persistedIds);
   persistedIdsRef.current = persistedIds;
 
-  // Select the most recent conversation on first load
+  // Default to a brand-new assessment on first load (empty chat view)
   useEffect(() => {
-    if (activeId === null && list.length > 0) {
-      setActiveId(list[0].id);
+    if (activeId === null) {
+      handleNew();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);

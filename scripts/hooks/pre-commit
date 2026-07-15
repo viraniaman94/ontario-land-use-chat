@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# pre-commit: check AGENTS.md stays small and in sync.
+# Blocks the commit if AGENTS.md exceeds the size budget.
+set -euo pipefail
+
+AGENTS_MD="AGENTS.md"
+
+if [ ! -f "$AGENTS_MD" ]; then
+  exit 0
+fi
+
+MAX_BYTES=16384   # 16 KB
+MAX_LINES=300
+
+SIZE=$(wc -c < "$AGENTS_MD" | tr -d ' ')
+LINES=$(wc -l < "$AGENTS_MD" | tr -d ' ')
+
+OVER=0
+
+if [ "$SIZE" -gt "$MAX_BYTES" ]; then
+  echo "✗ AGENTS.md is ${SIZE} bytes (limit ${MAX_BYTES})." >&2
+  OVER=1
+fi
+
+if [ "$LINES" -gt "$MAX_LINES" ]; then
+  echo "✗ AGENTS.md is ${LINES} lines (limit ${MAX_LINES})." >&2
+  OVER=1
+fi
+
+if [ "$OVER" -eq 1 ]; then
+  echo "  Consolidate, prune stale notes, or move detail into a sub-doc." >&2
+  echo "  Commit aborted." >&2
+  exit 1
+fi
+
+echo "✓ AGENTS.md size OK (${SIZE} bytes, ${LINES} lines)."
