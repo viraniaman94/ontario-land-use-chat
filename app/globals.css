@@ -1,6 +1,13 @@
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
+@import "highlight.js/styles/github-dark.css";
+
+/* Font families — Geist & Geist Mono (loaded via Google Fonts in root.tsx) */
+:root {
+  --font-geist-sans: "Geist", ui-sans-serif, system-ui, sans-serif;
+  --font-geist-mono: "Geist Mono", ui-monospace, monospace;
+}
 
 @custom-variant dark (&:is(.dark *));
 
@@ -46,6 +53,23 @@
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  /* Pi-style formatting tokens — reference CSS vars defined in :root and .dark */
+  --color-thinking-text: var(--pi-thinking-text);
+  --color-tool-pending-bg: var(--pi-tool-pending-bg);
+  --color-tool-success-bg: var(--pi-tool-success-bg);
+  --color-tool-error-bg: var(--pi-tool-error-bg);
+  --color-tool-title: var(--foreground);
+  --color-tool-output: var(--muted-foreground);
+  --color-tool-diff-added: var(--pi-diff-added);
+  --color-tool-diff-removed: var(--pi-diff-removed);
+  --color-tool-diff-context: var(--muted-foreground);
+  --color-md-heading: var(--pi-md-heading);
+  --color-md-link: var(--accent-foreground);
+  --color-md-code: var(--pi-md-code);
+  --color-md-code-block-border: var(--muted-foreground);
+  --color-md-quote: var(--muted-foreground);
+  --color-md-quote-border: var(--muted-foreground);
+  --color-md-list-bullet: var(--pi-md-list-bullet);
 }
 
 :root {
@@ -81,6 +105,16 @@
   --sidebar-accent-foreground: oklch(0.205 0 0);
   --sidebar-border: oklch(0.922 0 0);
   --sidebar-ring: oklch(0.708 0 0);
+  /* Pi-style formatting tokens — light mode */
+  --pi-thinking-text: oklch(0.45 0 0);
+  --pi-tool-pending-bg: oklch(0.96 0.015 280);
+  --pi-tool-success-bg: oklch(0.96 0.015 145);
+  --pi-tool-error-bg: oklch(0.96 0.015 25);
+  --pi-diff-added: oklch(0.4 0.15 145);
+  --pi-diff-removed: oklch(0.45 0.2 25);
+  --pi-md-heading: oklch(0.5 0.15 65);
+  --pi-md-code: oklch(0.45 0.15 200);
+  --pi-md-list-bullet: oklch(0.45 0.15 200);
 }
 
 .dark {
@@ -115,6 +149,16 @@
   --sidebar-accent-foreground: oklch(0.985 0 0);
   --sidebar-border: oklch(1 0 0 / 10%);
   --sidebar-ring: oklch(0.556 0 0);
+  /* Pi-style formatting tokens — dark mode */
+  --pi-thinking-text: oklch(0.65 0 0);
+  --pi-tool-pending-bg: oklch(0.22 0.03 280);
+  --pi-tool-success-bg: oklch(0.22 0.03 140);
+  --pi-tool-error-bg: oklch(0.22 0.05 25);
+  --pi-diff-added: oklch(0.6 0.15 140);
+  --pi-diff-removed: oklch(0.6 0.2 25);
+  --pi-md-heading: oklch(0.75 0.15 65);
+  --pi-md-code: oklch(0.7 0.15 200);
+  --pi-md-list-bullet: oklch(0.7 0.15 200);
 }
 
 @layer base {
@@ -126,5 +170,71 @@
   }
   html {
     @apply font-sans;
+  }
+}
+
+/* Pi-style formatting utilities */
+@layer utilities {
+  /* Thinking block */
+  .pi-thinking-text {
+    @apply italic text-muted-foreground;
+  }
+
+  /* Tool call blocks */
+  .pi-tool-pending {
+    background-color: var(--color-tool-pending-bg);
+  }
+  .pi-tool-success {
+    background-color: var(--color-tool-success-bg);
+  }
+  .pi-tool-error {
+    background-color: var(--color-tool-error-bg);
+  }
+
+  /* Markdown overrides */
+  .pi-md-heading {
+    color: var(--color-md-heading);
+  }
+  .pi-md-code {
+    color: var(--color-md-code);
+  }
+  .pi-md-link {
+    color: var(--color-md-link);
+  }
+  .pi-md-list-bullet {
+    color: var(--color-md-list-bullet);
+  }
+  .pi-md-quote {
+    color: var(--color-md-quote);
+    font-style: italic;
+  }
+  .pi-md-quote-border {
+    border-left-color: var(--color-md-quote-border);
+  }
+
+  /* Diff colors */
+  .pi-diff-added {
+    color: var(--color-tool-diff-added);
+  }
+  .pi-diff-removed {
+    color: var(--color-tool-diff-removed);
+  }
+  .pi-diff-context {
+    color: var(--color-tool-diff-context);
+  }
+
+  /* Streaming cursor */
+  .pi-streaming-cursor {
+    @apply ml-0.5 inline-block h-4 w-1 animate-pulse align-middle bg-current;
+  }
+
+  /* Animated pulse dot */
+  .pi-pulse-dot {
+    @apply inline-block h-2 w-2 rounded-full bg-current animate-pulse;
+  }
+
+  /* Tool output truncation */
+  .pi-truncated {
+    @apply text-xs text-muted-foreground italic;
   }
 }

@@ -20,6 +20,7 @@ User message
         searchDocuments(q)   — grep the index for matching entries
         readDocument(path)   — reads a Markdown/PDF/HTML file from disk
    →  tokens stream back to the browser and render as markdown
+   →  on stream completion, messages are persisted to Neon Postgres
 ```
 
 Planning documents are **read from disk** — they are not bundled, uploaded,
@@ -29,14 +30,18 @@ at `~/.hermes/skills/ontario-land-use-feasibility/documents/` (269 MB across
 
 ## Tech stack
 
-- **Next.js 16** (App Router, route handlers, Turbopack)
-- **React 19**
+- **React Router v8** (framework mode, SSR, resource routes, flat file routing,
+  middleware)
+- **Vite 7** as the build tool (Environment API)
+- **React 19.2.7+**
 - **shadcn/ui v4** on **Tailwind CSS v4** (sidebar, sheet, button, textarea,
   card, scroll-area, separator, avatar, skeleton, sonner, tooltip)
 - **AI SDK v7** (`ai`, `@ai-sdk/react`, `@ai-sdk/openai-compatible`)
-- **pdf-parse** for PDF text extraction (fallback when a Marker-converted Markdown version isn't available)
+- **Neon Postgres** (`@neondatabase/serverless` — HTTP-based, serverless-friendly)
+  for persistent conversation and message storage
+- **v8 Middleware-based auth** (single hardcoded password, no user accounts;
+  cookie session via `createCookieSessionStorage`)
 - **react-markdown** + **remark-gfm** for rendering assistant messages
-  (tables, headings, lists)
 - **TypeScript**, **Bun**
 
 ## LLM provider
@@ -50,14 +55,35 @@ The agent talks to Ollama Cloud's OpenAI-compatible endpoint:
 | Model          | `glm-5.2`                               |
 | Env var        | `OLLAMA_API_KEY`                        |
 
-Override the base URL with `OLLAMA_BASE_URL` if you have a custom
-upstream. See `lib/ai-provider.ts`.
+## Database (Neon Postgres)
+
+All conversations and messages are persisted to a Neon Postgres database.
+The schema is auto-created on first server load (idempotent `IF NOT EXISTS`).
+
+| Table            | Columns                                           |
+|------------------|---------------------------------------------------|
+| `conversations`  | id (PK), title, created_at, updated_at            |
+| `messages`        | id (PK), conversation_id (FK), role, parts (JSONB), created_at |
+
+Messages are stored as JSONB to preserve the full `UIMessage` structure
+(text parts, reasoning parts, tool-call parts, etc.).
+
+## Authentication
+
+A single hardcoded password protects the app — no user accounts, no
+registration. The password is checked via a signed cookie session.
+
+| Variable       | Default       | Notes                              |
+|----------------|---------------|------------------------------------|
+| `APP_PASSWORD`  | `ontario2025` | Override via env var               |
+| `SESSION_SECRET`| (dev default) | 32+ char random string for prod    |
 
 ## Prerequisites
 
+- **Node 22.22+** (required by React Router v8)
 - **Bun 1.3+** — `brew install bun`
-- **Node 18+** (for Next.js tooling)
 - A valid `OLLAMA_API_KEY`
+- A Neon Postgres database (free tier at [neon.tech](https://neon.tech))
 - The Hermes land-use skill installed at
   `~/.hermes/skills/ontario-land-use-feasibility/` (with `SKILL.md`,
   `documents/`, `templates/feasibility-report.md`)
@@ -67,9 +93,22 @@ upstream. See `lib/ai-provider.ts`.
 ```bash
 cd ontario-land-use-chat
 bun install
-cp .env.example .env.local
-# edit .env.local and paste your OLLAMA_API_KEY
+cp .env.example .env
+# Edit .env and set:
+#   DATABASE_URL     — your Neon connection string
+#   OLLAMA_API_KEY   — your Ollama Cloud API key
+#   APP_PASSWORD     — (optional, defaults to "ontario2025")
+#   SESSION_SECRET   — (optional in dev, required in production)
 ```
+
+## Set up the database
+
+```bash
+bun run db:setup
+```
+
+This creates the `conversations` and `messages` tables in your Neon
+database. The schema is also auto-created on first server load.
 
 ## Run locally
 
@@ -77,64 +116,65 @@ cp .env.example .env.local
 bun dev
 ```
 
-Open <http://localhost:3000>. On this Mac, port 3000 is occupied by the Hermes
-gateway, so the app runs on **3001** by default — the included `Makefile` and
-launchd plist both use `PORT=3001`. To pick another port:
-
-```bash
-PORT=3001 bun dev   # or: bun dev -- -p 3001
-```
+Open <http://localhost:5173/>. You'll be redirected to `/login` — enter
+the password (default: `ontario2025`) to access the app.
 
 ## Production build & start
 
 ```bash
 bun run build
 bun run start
-# defaults to 3000; on this Mac use:
-#   PORT=3001 bun run start
 ```
 
 ## Configuration
 
 | Variable                 | Required | Default                              | Notes                          |
 |--------------------------|----------|--------------------------------------|--------------------------------|
+| `DATABASE_URL`           | yes      | —                                    | Neon Postgres connection string |
 | `OLLAMA_API_KEY`         | yes      | —                                    | API key for Ollama Cloud       |
+| `APP_PASSWORD`           | no       | `ontario2025`                        | Single shared access password  |
+| `SESSION_SECRET`         | no       | (dev default)                        | Cookie signing secret (32+ chars) |
 | `OLLAMA_BASE_URL`        | no       | `https://ollama.com/v1`              | Override upstream base URL     |
-| `PORT`                   | no       | `3000`                               | Next.js listen port            |
-| `LAND_USE_DOCS_DIR`      | no       | `./converted-docs` or skill `documents/` | Directory of Marker-converted Markdown files. Defaults to `<repo>/converted-docs` if present, otherwise falls back to the original skill PDF/HTML documents dir. Override to point at a custom location. |
+| `LAND_USE_DOCS_DIR`      | no       | skill `documents/`                   | Override documents directory   |
+| `PORT`                   | no       | `3000`                               | Production server listen port  |
 
-## Converting planning PDFs to LLM-friendly Markdown
+## Architecture
 
-The `.pdf` planning documents are heavy on tables (zoning schedules, land-use
-stats, maps). For higher retrieval/LLM quality you can batch-convert them to
-structured Markdown using [Marker](https://github.com/datalab-to/marker) with
-its `--use_llm` mode, routed through the same OpenCode Go subscription
-(OpenAI-compatible endpoint) using `deepseek-v4-flash`.
-
-```bash
-# preview the file list (no conversion)
-make convert-docs-dry
-
-# resumable batch convert of all 38 PDFs under the skill docs dir,
-# writing ./converted-docs/<relpath>.md + a table-quality report
-make convert-docs
-
-# scanned/image PDFs (adds --force_ocr)
-make convert-docs-ocr
-
-# custom folder + output + 2 parallel jobs
-make convert-docs-dir INPUT=./pdfs OUTPUT=./md JOBS=2
-# swap the model + provider for this run
-OLLAMA_MODEL=deepseek-v4-flash make convert-docs
 ```
-
-`scripts/convert_pdfs.py` reads `OLLAMA_API_KEY` from `.env.local`, runs
-Marker via `uvx --from marker-pdf marker_single` (isolated env, no project
-deps added), mirrors the input tree into the output dir, and is resumable
-(existing `.md` is skipped unless `--force`). Per-file table/row/char counts
-are written to `scripts/convert-report.{json,csv}`. See
-`scripts/requirements.txt` if you prefer to install `marker-pdf` on your PATH
-and set `MARKER_CMD=marker_single`.
+app/
+  root.tsx                      Root layout, fonts, TooltipProvider
+  routes.ts                     Flat file route config (flatRoutes)
+  routes/
+    _auth.tsx                   Pathless layout: auth guard + DB init
+    _auth._index.tsx            Main chat page (DB-backed conversations)
+    login.tsx                   Password login page
+    logout.tsx                  Logout resource route
+    api.chat.ts                 Streaming chat resource route (SSE)
+    api.conversations.ts        GET list / POST create conversations
+    api.conversations.$id.ts    GET / PUT / DELETE conversation + messages
+  auth/
+    session.ts                  Cookie session, password check, auth helpers
+    middleware.ts               v8 middleware (authMiddleware, apiAuthMiddleware)
+  db/
+    client.ts                   Neon client, conversation/message CRUD
+    schema.sql                  Database schema (conversations + messages)
+  components/
+    chat/                       chat-header, chat-messages, chat-input,
+                                 chat-message, chat-sidebar, chat,
+                                 assistant-message, thinking-block,
+                                 tool-call-block, markdown-content
+    ui/                         shadcn/ui primitives
+  hooks/
+    use-conversations.ts        ConversationMeta type
+    use-mobile.ts               Breakpoint hook (shadcn sidebar)
+  lib/
+    ai-provider.ts              Ollama Cloud provider config
+    agent/
+      document-service.ts       Read documents from skill dir (path-safe)
+      system-prompt.ts          Build system prompt from SKILL.md + index
+      tools.ts                  listDocuments / searchDocuments / readDocument
+    utils.ts                    cn() helper
+```
 
 ## How documents work
 
@@ -150,116 +190,23 @@ The agent never uploads PDFs to the LLM. Instead:
    the structured Markdown is returned (tables preserved as GFM). If no
    Markdown conversion exists yet, it falls back to extracting text from
    the original PDF via `pdf-parse`. **.html** files are always read from
-   the original skill documents directory (Marker does not convert HTML).
-   All paths are validated with traversal protection. Results are truncated
-   to 50,000 chars and cached for the server's lifetime.
+   the original skill documents directory.
 3. Read documents are cached in-memory for the server's lifetime.
 
-## Conversation history
+## Conversation persistence
 
-Conversations are stored in **`localStorage`** (no backend persistence in
-v1). The left sidebar lists past chats titled by the first user message.
-Use **New assessment** to start a fresh one; the trash icon deletes a
-conversation. Refreshing the page persists everything.
-
-## Architecture
-
-```
-app/
-  layout.tsx                  Root layout, fonts, TooltipProvider
-  page.tsx                    Client page: SidebarProvider + Chat
-  api/chat/route.ts           Streaming chat route (nodejs runtime)
-components/
-  chat/                       chat-header, chat-messages, chat-input,
-                              chat-message, chat-sidebar, chat
-  ui/                         shadcn/ui primitives
-hooks/
-  use-conversations.ts        localStorage conversation store
-  use-mobile.ts              Breakpoint hook (shadcn sidebar)
-lib/
-  ai-provider.ts              Ollama Cloud provider config
-  agent/
-    document-service.ts       Read documents from skill dir (path-safe)
-    system-prompt.ts         Build system prompt from SKILL.md + index
-    tools.ts                 listDocuments / searchDocuments / readDocument
-  utils.ts                    cn() helper
-```
-
-## Deployment
-
-### On this Mac via Cloudflare Tunnel (recommended)
-
-The app reads documents from the local filesystem, so it must run on a
-machine that has the skill installed. This MacBook (M2 Max, always-on) is
-ideal. Run the production server natively and expose it through a
-Cloudflare Tunnel for HTTPS without exposing the Mac's IP.
-
-> ⚠️ **Quick tunnels (`cloudflared tunnel --url http://localhost:3001`)
-> are dev-only** — they give a random `trycloudflare.com` subdomain with no
-> Cloudflare account, but per Cloudflare's docs they carry a **200
-> concurrent-request limit and no uptime guarantee**. Their docs also say
-> quick tunnels "do not support Server-Sent Events (SSE)." In practice we
-> observed SSE streaming through a quick tunnel working fine for single-user
-> dev/testing (reasoning + text deltas + `[DONE]` all arrived intact), but
-> don't rely on it under load — for any shared or long-lived use, set up the
-> **named** tunnel below, which fully supports SSE and has no concurrent
-> request cap. To try the app without Cloudflare at all, just open
-> `http://localhost:3001` (or `http://192.168.2.15:3001` from another device
-> on your LAN).
-
-```bash
-# 1. Build & start the prod server
-bun run build
-PORT=3001 bun run start        # http://localhost:3001 (3000 is the Hermes gateway)
-
-# 1b. (optional) quick dev tunnel — random trycloudflare.com URL, no account:
-#     cloudflared tunnel --url http://localhost:3001
-
-# 2. Install & authenticate cloudflared
-brew install cloudflared
-cloudflared tunnel login     # pick a hostname on your Cloudflare zone
-
-# 3. Create the tunnel and route DNS
-cloudflared tunnel create ontario-land-use-chat
-cloudflared tunnel route dns ontario-land-use-chat chat.yourdomain.com
-
-# 4. Configure ~/.cloudflared/config.yml
-#    tunnel: <TUNNEL_UUID>
-#    credentials-file: /Users/amanv/.cloudflared/<TUNNEL_UUID>.json
-#    ingress:
-#      - hostname: chat.yourdomain.com
-#        service: http://localhost:3001
-#      - service: http_status:404
-
-# 5. Run it
-cloudflared tunnel run ontario-land-use-chat
-```
-
-See `Task 9` in the plan for `launchd` plists that keep both the Next.js
-server and the tunnel alive across reboots.
-
-### Other platforms
-
-Any host with filesystem access to the skill's `documents/` directory works
-(a VPS, a Docker container with a mounted volume, etc.). Pure serverless
-platforms (Vercel functions, Cloudflare Workers) won't work because the
-route handler reads large PDFs from the local disk.
+Conversations are stored in **Neon Postgres**. When a chat stream completes,
+the client sends a `PUT /api/conversations/:id` with the full message array.
+Messages are stored as JSONB to preserve the complete `UIMessage` structure.
+The left sidebar lists past chats sorted by most recently updated.
 
 ## Limitations & known gaps
 
 - **PDF extraction quality** — `pdf-parse` may produce messy output for
-  complex zoning by-law tables. The agent now reads Marker-converted
-  Markdown (`./converted-docs/<relpath>.md`) when available, which
-  handles tables, headings, and structure far better. `pdf-parse` remains
-  the fallback when a Markdown conversion hasn't been generated yet or
-  when reading uncached HTML documents.
-- **Token budget** — documents are truncated to 50K chars per read. GLM-5.2
-  has a large context window, but reading many full PDFs in one assessment
-  can get expensive. The system prompt tells the model to read selectively.
-- **No pagination** — the v1 `readDocument` tool returns a truncated prefix.
-  An optional `offset`/`limit` could be added for paging long PDFs.
-- **No auth** — v1 has no user authentication; anyone who can reach the
-  tunnel can use the agent and consume API credits. Add Cloudflare Access
-  (`cloudflared access`) in front of the tunnel for protection.
+  complex zoning by-law tables. The agent reads Marker-converted Markdown
+  (`./converted-docs/<relpath>.md`) when available.
+- **Token budget** — documents are truncated to 50K chars per read.
+- **Single password auth** — there is no multi-user support. Anyone with
+  the shared password can access all conversations.
 - **Preliminary assessment only** — findings must be reviewed by a
   registered professional planner (RPP) before relying on them.

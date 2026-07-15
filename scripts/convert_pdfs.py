@@ -2,16 +2,16 @@
 """
 Batch-convert PDFs to LLM-friendly Markdown using Marker + an LLM backend.
 
-Default backend: OpenCode Go (OpenAI-compatible, https://opencode.ai/zen/go/v1)
+Default backend: Ollama Cloud (OpenAI-compatible, https://ollama.com/v1)
 with the deepseek-v4-flash model. Marker's `--use_llm` mode is text-only — it
 sends detected text/table blocks to the LLM for cleanup, cross-page table
 merging, inline math formatting, and form-value extraction. It does NOT send
 page images, so any chat model works.
 
 Env (read from process env, or from ../.env.local if present):
-  OPENCODE_GO_API_KEY   Required. Your OpenCode Go subscription API key.
-  OPENCODE_GO_BASE_URL  Default: https://opencode.ai/zen/go/v1
-  OPENCODE_GO_MODEL     Default: opencode-go/deepseek-v4-flash
+  OLLAMA_API_KEY       Required. Your Ollama Cloud API key.
+  OLLAMA_BASE_URL      Default: https://ollama.com/v1
+  OLLAMA_MODEL          Default: deepseek-v4-flash
   MARKER_CMD            Default: uvx --from marker-pdf marker_single
                          (override to e.g. "marker_single" if you have it on PATH)
 
@@ -25,8 +25,8 @@ Examples:
   # Convert a specific folder, allow 2 parallel jobs, force re-convert
   python3 scripts/convert_pdfs.py --input ./pdfs --output ./md --jobs 2 --force
 
-  # Use a different Go model for this run
-  OPENCODE_GO_MODEL=opencode-go/kimi-k2 python3 scripts/convert_pdfs.py
+  # Use a different Ollama model for this run
+  OLLAMA_MODEL=qwen3-v2 python3 scripts/convert_pdfs.py  # e.g. override model
 
 Output:
   <output>/<relpath>.md            — the converted markdown (tables as GFM)
@@ -62,8 +62,8 @@ REPORT_JSON = Path(__file__).resolve().parent / "convert-report.json"
 REPORT_CSV = Path(__file__).resolve().parent / "convert-report.csv"
 
 DEFAULT_SKILL_DOCS = Path.home() / ".hermes/skills/ontario-land-use-feasibility/documents"
-DEFAULT_BASE_URL = "https://opencode.ai/zen/go/v1"
-DEFAULT_MODEL = "opencode-go/deepseek-v4-flash"
+DEFAULT_BASE_URL = "https://ollama.com/v1"
+DEFAULT_MODEL = "deepseek-v4-flash"
 DEFAULT_MARKER_CMD = "uvx --from marker-pdf marker_single"
 
 
@@ -82,11 +82,11 @@ def load_env_file(env_path: Path) -> None:
 
 
 def get_config() -> dict:
-    api_key = os.environ.get("OPENCODE_GO_API_KEY", "").strip()
+    api_key = os.environ.get("OLLAMA_API_KEY", "").strip()
     return {
         "api_key": api_key,
-        "base_url": os.environ.get("OPENCODE_GO_BASE_URL", DEFAULT_BASE_URL).strip(),
-        "model": os.environ.get("OPENCODE_GO_MODEL", DEFAULT_MODEL).strip(),
+        "base_url": os.environ.get("OLLAMA_BASE_URL", DEFAULT_BASE_URL).strip(),
+        "model": os.environ.get("OLLAMA_MODEL", DEFAULT_MODEL).strip(),
         "marker_cmd": os.environ.get("MARKER_CMD", DEFAULT_MARKER_CMD).strip(),
     }
 
@@ -246,13 +246,13 @@ def output_path_for(pdf: Path, input_dir: Path, output_dir: Path) -> Path:
 
 
 def main() -> int:
-    ap = argparse.ArgumentParser(description="Batch-convert PDFs to LLM-friendly markdown via Marker + OpenCode Go.")
+    ap = argparse.ArgumentParser(description="Batch-convert PDFs to LLM-friendly markdown via Marker + Ollama Cloud.")
     ap.add_argument("--input", "-i", default=str(DEFAULT_SKILL_DOCS),
                     help=f"Input directory to scan for PDFs (default: {DEFAULT_SKILL_DOCS})")
     ap.add_argument("--output", "-o", default=str(REPO_ROOT / "converted-docs"),
                     help="Output directory for .md files (default: ./converted-docs)")
     ap.add_argument("--jobs", "-j", type=int, default=1,
-                    help="Parallel conversion jobs (default 1; OpenCode Go rate-limits)")
+                    help="Parallel conversion jobs (default 1; Ollama Cloud rate-limits)")
     ap.add_argument("--force", action="store_true", help="Re-convert even if .md output exists")
     ap.add_argument("--force-ocr", action="store_true",
                     help="Pass --force_ocr to marker (use for scanned/image PDFs)")
@@ -265,8 +265,8 @@ def main() -> int:
     cfg = get_config()
 
     if not cfg["api_key"]:
-        print("ERROR: OPENCODE_GO_API_KEY not set. Add it to .env.local or the "
-              "environment, or run with OPENCODE_GO_API_KEY=...", file=sys.stderr)
+        print("ERROR: OLLAMA_API_KEY not set. Add it to .env.local or the "
+              "environment, or run with OLLAMA_API_KEY=...", file=sys.stderr)
         return 2
 
     input_dir = Path(args.input).expanduser().resolve()

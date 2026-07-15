@@ -97,14 +97,14 @@ logs-tun:
 	@tail -f /tmp/cloudflared-chat.log /tmp/cloudflared-chat.err 2>/dev/null || \
 	 echo "No tunnel logs yet (tunnel hasn't been started via launchd)."
 
-# --- PDF -> Markdown conversion (Marker + OpenCode Go / deepseek-v4-flash) ---
+# --- PDF -> Markdown conversion (Marker + Ollama Cloud / deepseek-v4-flash) ---
 #
 # Converts every PDF under the skill documents dir into LLM-friendly
 # Markdown (tables as GFM), writing ./converted-docs/<relpath>.md plus a
 # table-quality report at scripts/convert-report.{json,csv}.
 #
-# Reads OPENCODE_GO_API_KEY from .env.local. Backend/model overridable via env:
-#   OPENCODE_GO_MODEL=opencode-go/kimi-k2 make convert-docs
+# Reads OLLAMA_API_KEY from .env.local. Backend/model overridable via env:
+#   OLLAMA_MODEL=qwen3-v2 make convert-docs
 #   MARKER_CMD=marker_single make convert-docs-j2   # if marker installed on PATH
 #
 # Run `make convert-docs-dry` first to preview the file list.

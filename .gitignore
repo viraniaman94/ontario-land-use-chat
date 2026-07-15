@@ -1,5 +1,3 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
 # dependencies
 /node_modules
 /.pnp
@@ -13,12 +11,9 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/out/
-
-# production
+# build output (React Router v7)
 /build
+/.react-router
 
 # misc
 .DS_Store
@@ -33,14 +28,10 @@ yarn-error.log*
 # env files (can opt-in for committing if needed)
 .env*
 
-# vercel
-.vercel
-
 # typescript
 *.tsbuildinfo
-next-env.d.ts
 
-# Cloudflare quick tunnel runtime artifacts (written by deploy/scripts/start-tunnel.sh)
+# Cloudflare quick tunnel runtime artifacts
 /.tunnel-url.txt
 /.tunnel-url.log
 
@@ -50,4 +41,6 @@ next-env.d.ts
 /scripts/convert-report.csv
 
 # Pi subagent artifacts
-/.pi-subagents/
+/.pi-subagents/.next/
+pi-response-formatting-guide.md
+.pi-subagents/
