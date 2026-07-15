@@ -1,90 +1,144 @@
-<!-- BEGIN:nextjs-agent-rules -->
-# This is NOT the Next.js you know
-
-This version has breaking changes — APIs, conventions, and file structure may all differ from your training data. Read the relevant guide in `node_modules/next/dist/docs/` before writing any code. Heed deprecation notices.
-<!-- END:nextjs-agent-rules -->
-
 # Ontario Land Use Planning Chat
 
-A Next.js chat app wrapping an AI agent that assesses whether proposed
-development projects are feasible under Ontario's land use planning
-framework (provincial policy, provincial plans, municipal official plans,
-zoning by-laws). Scope: 41 planning documents within ~150km of Peterborough.
+A React Router v8 chat app wrapping an AI agent that assesses whether proposed
+development projects are feasible under Ontario's land use planning framework
+(provincial policy, provincial plans, municipal official plans, zoning
+by-laws). Scope: 41 planning documents within ~150 km of Peterborough.
+
+> **Before relying on any AI SDK / React Router API detail, verify against the
+> installed versions** — these are newer than most training cutoffs. Use
+> Context7 for AI SDK APIs, and inspect `@react-router/*` package types or
+> docs for React Router v8 specifics.
 
 ## Tech Stack
 
-- **Next.js 16** (App Router) + **React 19**
-- **Bun** as package manager / runtime (`make install`, `bun dev`)
+- **React Router v8** (framework mode, SSR, flat file routing, middleware) +
+  **React 19**
+- **Vite 7** as the build tool (Environment API)
+- **Bun** as package manager / runtime
 - **AI SDK v7** (`ai`, `@ai-sdk/react`, `@ai-sdk/openai-compatible`) — UI uses
   `UIMessage[]` with a `parts` array (NOT a `content` string)
-- **OpenCode Go Zen** as the LLM provider (OpenAI-compatible endpoint), model `glm-5.2`
-  — proxied health is unknown; never assume provider-specific features
-- **Tailwind v4** + **shadcn/ui** + **base-ui** components
-- **pdf-parse v2** for PDF text extraction (lazy-loaded, dynamically imported)
-
-> Before relying on any AI SDK / Next.js API detail, verify against the
-> installed versions — these are newer than most training cutoffs. Read
-> `node_modules/next/dist/docs/` for Next.js, and inspect `ai` package types
-> or use Context7 for AI SDK APIs.
+- **OpenAI-compatible LLM provider** — Ollama Cloud, model `glm-5.2`
+  (`OLLAMA_API_KEY`, base URL `https://ollama.com/v1`)
+- **Neon Postgres** (`@neondatabase/serverless` — HTTP-based, serverless-friendly)
+  for persistent conversation and message storage
+- **Cloudflare Workers** + **R2** for production deployment; **Node.js** +
+  filesystem for local dev (toggled by `CLOUDFLARE=1` env var)
+- **Tailwind v4** + **shadcn/ui** (`base-nova` style) on **`@base-ui/react`**
+  primitives (NOT Radix)
+- **react-markdown** + **remark-gfm** + **rehype-highlight** for rendering
+  assistant messages
+- **pdf-parse v2** for PDF text extraction (legacy fallback; Marker-converted
+  Markdown preferred)
 
 ## Project Layout
 
 ```
 app/
-  api/chat/route.ts        Streaming chat endpoint (POST, SSE, runtime=nodejs, maxDuration=300)
-  page.tsx                 Client home: sidebar + active chat shell
-  layout.tsx, globals.css  Root layout + Tailwind/global styles
-components/
-  chat/                    Chat UI: chat, chat-input, chat-messages, chat-message,
-                           chat-header, chat-sidebar.tsx
-  ui/                      shadcn/ui primitives (button, card, sidebar, sheet, ...)
-hooks/
-  use-conversations.ts     localStorage-backed conversation CRUD + persistence
-  use-mobile.ts            viewport hook
-lib/
-  ai-provider.ts           OpenCode Go provider + MODEL_ID ("glm-5.2")
-  agent/
-    document-service.ts    Core: document read/list/search, split-section navigation, path-traversal guard, cache
-    tools.ts               AI SDK tool defs: readDocument, listDocuments, searchDocuments
-    system-prompt.ts       Builds system prompt (SKILL.md + sections index + template + 10 rules)
-  utils.ts                 cn() helper
+  root.tsx                       Root layout (HTML shell, TooltipProvider, r2StorageMiddleware)
+  routes.ts                      Flat file route config (flatRoutes from @react-router/fs-routes)
+  entry.server.tsx               Custom SSR entry (Web Streams for Cloudflare Workers compat)
+  globals.css                    Tailwind v4 + custom pi-* theme classes
+  routes/
+    _auth.tsx                    Pathless layout: authMiddleware guard + DB schema init
+    _auth._index.tsx             Home page: sidebar + chat, conversation CRUD (optimistic UI)
+    login.tsx                    Password login page (public, no auth)
+    logout.tsx                   Logout resource route (GET + POST)
+    api.chat.ts                  Streaming chat endpoint (POST, SSE, maxDuration 300)
+    api.conversations.ts         GET list / POST create conversations
+    api.conversations.$id.ts     GET / PUT / DELETE conversation + messages
+  auth/
+    session.ts                   Cookie session storage, password check, auth helpers
+    middleware.ts                v8 middleware: authMiddleware, apiAuthMiddleware, r2StorageMiddleware
+  db/
+    client.ts                    Neon client, conversation/message CRUD, ensureSchema()
+    schema.sql                   Database schema (conversations + messages, indexes)
+  components/
+    chat/                        Chat UI (see below)
+    ui/                          13 vendored shadcn/ui primitives (base-ui based)
+  hooks/
+    use-conversations.ts          ConversationMeta type only (CRUD moved to route layer)
+    use-mobile.ts                Viewport breakpoint hook (768px)
+  lib/
+    ai-provider.ts               Ollama Cloud provider + MODEL_ID ("glm-5.2")
+    agent/
+      document-service.ts        Document read/list/search, R2 + filesystem dual-mode, cache
+      tools.ts                   AI SDK tool defs: readDocument, listDocuments, searchDocuments
+      system-prompt.ts           Builds system prompt (SKILL.md + sections index + template + 10 rules)
+    utils.ts                     cn() helper
 scripts/
-  convert_pdfs.py          Marker + LLM PDF→Markdown converter; writes ./converted-docs/*.md
-  convert-report.{json,csv} Quality report from last conversion run
-  split_markdown.py        Splits .md docs into individual section files with
-                           per-document _index.md + top-level sections-index.md
-                           (uses marko via `uv run --with marko`)
-converted-docs/            Marker-converted Markdown docs (repo-local, gitignored;
-                           copied into the skill dir via `make copy-converted-docs`)
+  convert_pdfs.py                Marker + LLM PDF→Markdown converter; writes ./converted-docs/*.md
+  split_markdown.py              Splits .md docs into section files with _index.md + sections-index.md
+  setup-db.mjs                   Creates Neon Postgres schema from app/db/schema.sql
+  upload-to-r2.mjs               Differential upload of skill docs to Cloudflare R2 bucket
+  convert-report.{json,csv}      Quality report from last conversion run
+  requirements.txt              Pins marker-pdf version (installed via uvx, not project deps)
+workers/
+  app.ts                         Cloudflare Workers entry: env→process.env bridge, R2 globalThis wiring
 deploy/
-  launchd/*.plist          launchd agents to keep app + cloudflared tunnel alive on reboot
-  scripts/start-tunnel.sh
-Makefile                   install/dev/build/prod, tunnel setup, launchd load/unload,
-                           convert-docs*, copy-converted-docs, split-docs
+  launchd/*.plist                launchd agents (NOTE: app plist is stale — references next start)
+  scripts/start-tunnel.sh         Quick Cloudflare tunnel launcher
+Makefile                         install/dev/build/prod, tunnel, launchd, convert-docs, split-docs
+vite.config.ts                   Vite config (conditional @cloudflare/vite-plugin, env injection)
+react-router.config.ts           React Router config (ssr: true)
+wrangler.jsonc                   Cloudflare Workers config (R2 binding, nodejs_compat, observability)
+tsconfig.json                    TS config (strict, ~/* and @/* → ./app/*)
+components.json                  shadcn/ui config (base-nova style, base-ui primitives)
+converted-docs/                  Marker-converted Markdown docs (gitignored)
 ```
+
+### Chat Component Tree
+
+```
+Chat (loads conversation from DB, persist guard)
+ └─ ChatInner (memoized, owns useChat)
+     ├─ ChatHeader (static title bar + sidebar trigger)
+     ├─ ChatMessages (auto-scroll, empty state, "Analyzing…" indicator)
+     │   ├─ AssistantMessage (parts router)
+     │   │   ├─ MarkdownContent (text parts — react-markdown + remark-gfm)
+     │   │   ├─ ThinkingBlock (reasoning parts — collapsible)
+     │   │   ├─ ToolCallBlock (tool-* / dynamic-tool parts — state-tinted)
+     │   │   └─ step-start separator
+     │   └─ ChatMessage (user messages — chat bubble)
+     └─ ChatInput (textarea + send/stop button)
+```
+
+### Vendored shadcn/ui Components (13)
+
+`avatar`, `bubble` (custom, not from registry), `button`, `card`, `input`,
+`scroll-area`, `separator`, `sheet`, `sidebar` (722 lines — the largest),
+`skeleton`, `sonner`, `textarea`, `tooltip`. All based on `@base-ui/react`
+primitives (not Radix UI).
 
 ## How the Agent Works
 
-The system prompt is assembled in `lib/agent/system-prompt.ts` from `SKILL.md`
-+ `templates/feasibility-report.md` + the top-level sections index, plus 10
-hard rules (never fabricate, always cite, flag missing docs, check Bill 17
-setbacks, etc.). The agent has 3 tools (defined in `lib/agent/tools.ts`):
+The system prompt is assembled in `lib/agent/system-prompt.ts` from:
+1. `SKILL.md` (10-step assessment procedure)
+2. `templates/feasibility-report.md` (report template)
+3. Top-level document navigation index (`sections-index.md`)
 
-- `readDocument(path)` — reads any .md file or section file from the skill
-  documents directory (truncated to 50k chars).
-- `listDocuments()` — returns the top-level `sections-index.md` navigation index.
-- `searchDocuments(query)` — AND-search across all section indexes (top-level
-  + per-document `_index.md` files).
+Plus 10 critical rules (never fabricate, always cite, flag missing docs, check
+Bill 17 setbacks, use GO/CONDITIONAL GO/CAUTION/NO-GO verdicts, etc.).
 
-The chat route wraps `streamText({ model, system, messages, tools, stopWhen:
-isStepCount(20), temperature: 0.2 })` and returns a UI message stream (SSE).
+The agent has 3 tools (defined in `lib/agent/tools.ts`, backed by
+`document-service.ts`):
 
-### Document Navigation (the heart of `document-service.ts`)
+- **`readDocument(path)`** — reads any `.md` file or section file from the skill
+  documents directory (truncated to 50K chars, cached in-memory).
+- **`listDocuments()`** — returns the top-level `sections-index.md` navigation
+  index (falls back to `document-index.md`).
+- **`searchDocuments(query)`** — case-insensitive AND-search across all section
+  indexes (top-level + per-document `_index.md` files). Results capped at 200.
 
-All planning documents are stored as `.md` files in the skill's `documents/`
-directory (`~/.hermes/skills/ontario-land-use-feasibility/documents/`).
-Large documents (200 KB – 900 KB) are split into individual section files
-by `scripts/split_markdown.py`, creating a navigable directory structure:
+The chat route (`api.chat.ts`) wraps `streamText({ model, system, messages,
+tools, stopWhen: isStepCount(20), temperature: 0.2 })` and returns a UI message
+stream (SSE) via `createUIMessageStreamResponse`.
+
+### Document Navigation
+
+All planning documents are stored as `.md` files. Large documents (200 KB –
+900 KB) are split into individual section files by `scripts/split_markdown.py`,
+creating a navigable directory structure:
 
 ```
 documents/
@@ -102,63 +156,136 @@ documents/
   zoning/...
 ```
 
-The agent navigates this structure without loading entire large documents:
+The agent navigates without loading entire large documents:
 1. `listDocuments()` → top-level `sections-index.md` (which docs exist)
 2. `readDocument("provincial/pps-2024/_index.md")` → section list w/ summaries
 3. `readDocument("provincial/pps-2024/06-22-housing.md")` → specific section
 
-`readDocument` resolves paths via `resolveSafe()` (path traversal guard) and
-caches results in an in-memory `docCache` Map. `searchDocuments` walks all
-category subdirectories, reads each `_index.md`, and returns matching lines.
+### Dual-Mode Document Storage
 
-The document **index is always read from the skill documents dir** —
-`sections-index.md` is the top-level index (generated by `split_markdown.py`),
-and each document's `_index.md` is its section-level index.
+- **R2 mode (Cloudflare Workers):** Activated when `setDocumentStorage(bucket)`
+  is called (from `r2StorageMiddleware` at root level, wired via
+  `globalThis.__R2_BUCKET` in `workers/app.ts`). Document keys are prefixed
+  with `documents/`.
+- **Filesystem mode (local dev):** Fallback when no R2 bucket is set. Reads
+  from `LAND_USE_DOCS_DIR` or default `~/.hermes/skills/ontario-land-use-feasibility/documents`.
+  Uses `resolveSafe()` for path traversal protection. Node built-ins (`fs`,
+  `path`, `os`) are loaded via lazy `eval("require")` to avoid bundler issues.
+
+In-memory caches (`docCache`, `searchIndexCache`) persist for the process/isolate
+lifetime with no TTL.
 
 ### PDF → Markdown → Split Section Files Pipeline
 
-1. **Convert:** `make convert-docs` runs `scripts/convert_pdfs.py` (Marker + LLM)
-   to convert PDFs to `.md` files in `./converted-docs/`.
-2. **Copy:** `make copy-converted-docs` copies the `.md` files into the skill's
-   `documents/` directory (alongside the original PDFs/HTML).
-3. **Split:** `make split-docs` runs `scripts/split_markdown.py` which uses the
-   `marko` markdown parser to split each `.md` into individual section files
-   with per-document `_index.md` files and a top-level `sections-index.md`.
+1. **Convert:** `make convert-docs` runs `scripts/convert_pdfs.py` (Marker +
+   LLM, model `deepseek-v4-flash` via Ollama Cloud) → `./converted-docs/*.md`
+2. **Copy:** `make copy-converted-docs` copies `.md` files to the skill's
+   `documents/` directory
+3. **Split:** `make split-docs` runs `split_markdown.py` (marko parser) →
+   individual section files + `_index.md` per doc + top-level `sections-index.md`
+4. **Upload to R2:** `bun run r2:upload` runs `scripts/upload-to-r2.mjs`
+   (differential upload to Cloudflare R2 bucket `ontario-land-use-docs`)
+
+## Authentication
+
+Single hardcoded password protects the app — no user accounts, no registration.
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `APP_PASSWORD` | `ontario2025` | Override via env var |
+| `SESSION_SECRET` | (dev default) | 32+ char random string for prod |
+
+Auth is enforced via React Router v8 middleware:
+- **`authMiddleware`** (browser routes) — redirects to `/login` if not
+  authenticated. Applied to `_auth.tsx` pathless layout.
+- **`apiAuthMiddleware`** (API routes) — returns 401 JSON if not authenticated.
+  Applied to all `api.*` routes.
+- **`r2StorageMiddleware`** (root) — wires R2 bucket into document service on
+  every request.
+
+Session is a signed cookie (`createCookieSessionStorage`), `httpOnly: true`,
+`sameSite: "lax"`, `secure` in production.
+
+## Database (Neon Postgres)
+
+| Table | Columns |
+|-------|---------|
+| `conversations` | id (PK), title, created_at, updated_at |
+| `messages` | id (PK), conversation_id (FK → conversations ON DELETE CASCADE), role, parts (JSONB), created_at |
+
+- Schema is auto-created on first server load via `ensureSchema()` (idempotent
+  `IF NOT EXISTS`, guarded by module-level flag).
+- Messages stored as JSONB to preserve full `UIMessage` structure (text parts,
+  reasoning parts, tool-call parts).
+- `replaceMessages()` does delete-then-insert (no transaction — partial failure
+  risk).
+- `listConversations()` returns all rows (no pagination).
 
 ## Environment
 
-`.env.local` (gitignored) must contain:
-- `OLLAMA_API_KEY` — required for the LLM provider.
+| Variable | Required | Default | Purpose |
+|----------|----------|---------|---------|
+| `DATABASE_URL` | yes | — | Neon Postgres connection string |
+| `OLLAMA_API_KEY` | yes | — | Ollama Cloud API key |
+| `OLLAMA_BASE_URL` | no | `https://ollama.com/v1` | Override LLM endpoint |
+| `APP_PASSWORD` | no | `ontario2025` | Single shared access password |
+| `SESSION_SECRET` | no | (dev default) | Cookie signing secret (32+ chars) |
+| `LAND_USE_DOCS_DIR` | no | skill `documents/` | Override filesystem docs directory |
 
-See `.env.example`.
+For Cloudflare Workers: `DATABASE_URL`, `OLLAMA_API_KEY`, `SESSION_SECRET` are
+set via `wrangler secret put`. `OLLAMA_BASE_URL` and `APP_PASSWORD` are in
+`wrangler.jsonc` vars. R2 binding `DOCUMENTS` → bucket `ontario-land-use-docs`.
 
 ## Commands
 
 ```bash
 make install              # bun install
-make dev                  # bun dev on PORT (default 3001)
-make prod                 # build + start on PORT
+make dev                  # bun dev (local Node.js, filesystem docs)
+make prod                 # build + start
 make convert-docs         # run scripts/convert_pdfs.py (PDF→MD)
 make convert-docs-dry     # preview the file list
 make copy-converted-docs  # copy converted-docs/*.md to skill documents dir
 make split-docs           # split .md docs into section files + indexes
-bunx tsc --noEmit         # typecheck
+bun run db:setup          # create Neon Postgres schema
+bun run typecheck         # react-router typegen && tsc --noEmit
+
+# Cloudflare Workers mode
+bun run cf:dev            # CLOUDFLARE=1 react-router dev (workerd runtime)
+bun run cf:build          # CLOUDFLARE=1 react-router build
+bun run cf:deploy         # build + wrangler deploy
+bun run cf:tail           # wrangler tail (live logs)
+bun run r2:upload         # upload docs to R2 bucket
 ```
 
-Port defaults to **3001** (3000 is occupied by the local Hermes gateway).
+Dev server runs on **port 5173** (Vite default). Production server defaults to
+**port 3000**. The Makefile uses port 3001 (to avoid collision with a local
+Hermes gateway on 3000).
 
 ## Conventions / Gotchas
 
 - **`UIMessage` carries content in `parts`, not `content`.** The chat route
-  explicitly validates this and returns a clear 400 if legacy
-  `{ role, content }` messages are posted — `convertToModelMessages` throws a
-  cryptic error otherwise.
-- Path alias: `@/*` → `./*` (see `tsconfig.json`).
-- Conversations persist to **localStorage** only; there is no backend auth or DB.
+  explicitly validates this and returns 400 if legacy `{ role, content }`
+  messages are posted.
+- **Path aliases:** `~/*` and `@/*` both → `./app/*` (see `tsconfig.json`).
+  `@/*` is used by shadcn/ui; `~/*` is React Router convention.
+- **Conversations persist to Neon Postgres**, not localStorage. All persistence
+  goes through API resource routes (`/api/conversations*`).
+- **Optimistic UI:** the home route (`_auth._index.tsx`) updates local state
+  immediately, then persists asynchronously via fetch calls.
+- **Dual-mode architecture:** `CLOUDFLARE=1` toggles between Node.js (filesystem
+  document access) and Workers (R2 document access). Document service uses
+  `globalThis.__R2_BUCKET` to detect mode.
+- **`workers/app.ts` is NOT type-checked** by `tsc --noEmit` — it's excluded
+  from `tsconfig.json` includes. Run `bun run cf:typegen` for Wrangler types.
+- **Custom CSS theme classes:** `pi-streaming-cursor`, `pi-pulse-dot`,
+  `pi-thinking-text`, `pi-tool-pending/error/success`, `pi-diff-added/removed/
+  context`, `pi-md-heading/code/link/quote/list-bullet` — defined in
+  `app/globals.css`.
+- **Stale deploy artifacts:** `deploy/launchd/com.user.ontario-land-use-chat.plist`
+  and the Makefile `logs` target reference Next.js paths (`.next/`, `next start`)
+  — these are from a previous framework version and need updating.
+- **`use-conversations.ts` is vestigial** — contains only the `ConversationMeta`
+  type. CRUD logic lives in the route component (`_auth._index.tsx`) and API
+  routes.
 - The skill dir (`~/.hermes/skills/...`) is environment-specific and untracked —
   code assumes it exists on the host. Don't hardcode its contents.
-- When editing shadcn/ui components, they're vendored in `components/ui/` and
-  styled with Tailwind v4 + `cva`; check `components.json`.
-- Deploy is native macOS via launchd + Cloudflare Tunnel (see `deploy/README.md`).
-  The `/api/chat` SSE stream works through a named tunnel; quick tunnels are
-  dev-only and have a 200-concurrent-request cap.

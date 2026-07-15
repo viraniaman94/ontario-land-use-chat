@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   SidebarInset,
   SidebarProvider,
@@ -35,6 +35,15 @@ export default function Home() {
   const [list, setList] = useState<ConversationRow[]>(loaderData.conversations);
   const [activeId, setActiveId] = useState<string | null>(null);
 
+  // Track which conversations actually exist in the DB. New "assessment"
+  // clicks are created locally only; they get persisted to the DB lazily once
+  // the user sends their first message. This avoids saving empty assessments.
+  const [persistedIds, setPersistedIds] = useState<Set<string>>(
+    () => new Set(loaderData.conversations.map((c) => c.id)),
+  );
+  const persistedIdsRef = useRef(persistedIds);
+  persistedIdsRef.current = persistedIds;
+
   // Select the most recent conversation on first load
   useEffect(() => {
     if (activeId === null && list.length > 0) {
@@ -57,20 +66,10 @@ export default function Home() {
       updated_at: now,
     };
 
-    // Optimistic update
+    // Optimistic update: show it locally as the active chat, but do NOT
+    // persist to the DB yet. It will be created lazily on the first message.
     setList((prev) => [conv, ...prev]);
     setActiveId(id);
-
-    // Persist to DB
-    try {
-      await fetch("/api/conversations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, title: "New assessment" }),
-      });
-    } catch (err) {
-      console.error("Failed to create conversation:", err);
-    }
   }, []);
 
   const handleSelect = useCallback((id: string) => {
@@ -80,7 +79,14 @@ export default function Home() {
   const handleDelete = useCallback(
     async (id: string) => {
       // Optimistic update
-      setList((prev) => prev.filter((c) => c.id !== id));
+      setList((prev) =>
+        prev.filter((c) => c.id !== id),
+      );
+      setPersistedIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
       if (activeId === id) {
         setActiveId(null);
       }
@@ -97,18 +103,20 @@ export default function Home() {
 
   const handlePersist = useCallback(
     async (id: string, messages: UIMessage[]) => {
-      // Update title from first user message
+      // Never persist an assessment with no user message — empty "New
+      // assessment" chats should not be saved to the DB or shown in the
+      // sidebar once the user navigates away.
       const firstUser = messages.find((m) => m.role === "user");
+      if (!firstUser) return;
+
       let title = "New assessment";
-      if (firstUser) {
-        const text = (firstUser.parts ?? [])
-          .filter((p) => p.type === "text")
-          .map((p) => (p as { text: string }).text)
-          .join(" ")
-          .trim();
-        if (text) {
-          title = text.length > 60 ? text.slice(0, 60) + "…" : text;
-        }
+      const text = (firstUser.parts ?? [])
+        .filter((p) => p.type === "text")
+        .map((p) => (p as { text: string }).text)
+        .join(" ")
+        .trim();
+      if (text) {
+        title = text.length > 60 ? text.slice(0, 60) + "…" : text;
       }
 
       // Optimistic update of local list
@@ -120,8 +128,19 @@ export default function Home() {
         ),
       );
 
-      // Persist messages to DB
       try {
+        // Lazily create the conversation row the first time a message is
+        // sent (handleNew no longer creates it up front).
+        if (!persistedIdsRef.current.has(id)) {
+          await fetch("/api/conversations", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id, title }),
+          });
+          setPersistedIds((prev) => new Set(prev).add(id));
+        }
+
+        // Persist messages to DB
         await fetch(`/api/conversations/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
@@ -147,10 +166,17 @@ export default function Home() {
       new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
   );
 
+  // Only show conversations that actually exist in the DB, plus the currently
+  // active one. This keeps empty, never-messaged "New assessment" drafts from
+  // lingering in the sidebar once the user navigates away.
+  const visibleList = sortedList.filter(
+    (c) => persistedIds.has(c.id) || c.id === activeId,
+  );
+
   return (
     <SidebarProvider>
       <ChatSidebar
-        conversations={sortedList.map((c) => ({
+        conversations={visibleList.map((c) => ({
           id: c.id,
           title: c.title,
           createdAt: new Date(c.created_at).getTime(),

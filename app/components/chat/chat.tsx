@@ -76,13 +76,30 @@ const ChatInner = memo(function ChatInner({
     transport,
   });
 
-  // Persist conversation to DB ONLY when streaming is done.
+  // Persist conversation to DB ONLY when the messages have actually changed
+  // (e.g. after a streaming round completes) — never on mount just from
+  // loading an existing conversation. We do this by tracking a signature of
+  // the messages: on the first run we capture the loaded state as the
+  // baseline, and only call onPersist when the signature differs from the
+  // last one we persisted. This is what keeps clicking an older chat from
+  // bumping its updated_at and jumping it to the top of the sidebar.
   const onPersistRef = useRef(onPersist);
   onPersistRef.current = onPersist;
+  const lastSigRef = useRef<string | null>(null);
   useEffect(() => {
-    if (messages.length > 0 && status === "ready") {
-      onPersistRef.current(id, messages);
+    if (messages.length === 0 || status !== "ready") return;
+    const sig = messages
+      .map((m) => `${m.id}:${m.role}:${JSON.stringify(m.parts)}`)
+      .join("||");
+    if (lastSigRef.current === null) {
+      // First run after mount: capture the loaded messages as the baseline
+      // so that simply opening a conversation never triggers a persist.
+      lastSigRef.current = sig;
+      return;
     }
+    if (sig === lastSigRef.current) return; // nothing changed since last persist
+    lastSigRef.current = sig;
+    onPersistRef.current(id, messages);
   }, [id, messages, status]);
 
   const isReady = status === "ready" || status === "error";
