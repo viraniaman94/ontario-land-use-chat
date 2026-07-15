@@ -82,7 +82,7 @@ scripts/
 workers/
   app.ts                         Cloudflare Workers entry: env→process.env bridge, R2 globalThis wiring
 deploy/
-  launchd/*.plist                launchd agents (NOTE: app plist is stale — references next start)
+  launchd/*.plist                launchd agents (React Router serve + Cloudflare tunnel)
   scripts/start-tunnel.sh         Quick Cloudflare tunnel launcher
 Makefile                         install/dev/build/prod, tunnel, launchd, convert-docs, split-docs
 vite.config.ts                   Vite config (conditional @cloudflare/vite-plugin, env injection)

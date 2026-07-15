@@ -12,18 +12,18 @@
   <key>ProgramArguments</key>
   <array>
     <string>/opt/homebrew/bin/node</string>
-    <string>node_modules/next/dist/bin/next</string>
-    <string>start</string>
+    <string>node_modules/.bin/react-router-serve</string>
+    <string>./build/server/index.js</string>
   </array>
 
   <!--
-    Invoke `next start` directly via node (not `bun run start`) so the
+    Invoke `react-router-serve` directly via node (not `bun run start`) so the
     process stays in the foreground and launchd can track its PID and
-    restart it on crash. `bun run start` spawns a child next-server and
+    restart it on crash. `bun run start` spawns a child server and
     then the bun parent exits (exit code 1), which confuses KeepAlive.
-    The OPENCODE_GO_API_KEY is read from .env.local at runtime by Next.js,
-    so it does not need to be set here. Set the port explicitly; the app
-    must NOT collide with the WhatsApp bridge on 3000.
+    The API keys are read from .env at runtime, so they do not need to
+    be set here. Set the port explicitly; the app must NOT collide with
+    the WhatsApp bridge on 3000.
   -->
   <key>EnvironmentVariables</key>
   <dict>
@@ -42,9 +42,9 @@
   <true/>
 
   <key>StandardOutPath</key>
-  <string>/Users/amanv/Projects/ontario-land-use-chat/.next/server.log</string>
+  <string>/Users/amanv/Projects/ontario-land-use-chat/build/server.log</string>
 
   <key>StandardErrorPath</key>
-  <string>/Users/amanv/Projects/ontario-land-use-chat/.next/server.err</string>
+  <string>/Users/amanv/Projects/ontario-land-use-chat/build/server.err</string>
 </dict>
 </plist>
