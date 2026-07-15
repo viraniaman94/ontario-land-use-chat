@@ -1,0 +1,270 @@
+#!/usr/bin/env bash
+# kanban — CLI wrapper around the SQLite kanban board (tasks/kanban.db).
+#
+# Usage:
+#   scripts/kanban <command> [args]
+#
+# Commands:
+#   list [--all]                 Show the board grouped by column (hidden: cancelled)
+#   add <id> "<title>" [opts]    Add a task. opts: --status= --priority= --tags= --desc= --assignee= --parent=
+#   show <id>                    Show a task + its activity history
+#   move <id> <status>           Move a task to a new status (logs activity)
+#   start <id>                   Shortcut: move -> in_progress
+#   review <id>                  Shortcut: move -> review
+#   done <id>                    Shortcut: move -> done
+#   cancel <id>                  Shortcut: move -> cancelled
+#   block <id>                   Shortcut: move -> backlog
+#   edit <id> [opts]             Edit --title= --desc= --priority= --assignee= --tags= (logs activity)
+#   note <id> "<text>"           Append a freeform comment to the activity log
+#   search "<query>"             Full-text search across title + description
+#   tag "<tag>"                  List tasks matching a tag
+#   subtasks <parent_id>         List subtasks of a parent
+#   reorder <id> <n>             Set column_order within current column
+#   delete <id>                  Delete a task (prefer 'cancel')
+#   columns                      Print the column order
+#   init [--reset]               Create (or reset) the board via kanban-init.sh
+#   counts                       Quick status counts
+#
+# The DB lives at <repo>/tasks/kanban.db and is auto-created from
+# scripts/kanban-schema.sql on first use. Works from any cwd.
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+REPO_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
+DB_DIR="$REPO_DIR/tasks"
+DB="$DB_DIR/kanban.db"
+SCHEMA="$SCRIPT_DIR/kanban-schema.sql"
+
+VALID_STATUSES="backlog todo in_progress review done cancelled"
+VALID_PRIORITIES="low medium high urgent"
+
+die() { echo "error: $*" >&2; exit 1; }
+
+ensure_db() {
+  if [[ ! -f "$DB" ]] || [[ ! -f "$SCHEMA" && ! -f "$DB" ]]; then
+    mkdir -p "$DB_DIR"
+  fi
+  if [[ ! -f "$DB" ]]; then
+    sqlite3 "$DB" < "$SCHEMA" 2>/dev/null || true
+  fi
+  sqlite3 "$DB" "PRAGMA foreign_keys=ON;" >/dev/null 2>&1 || true
+}
+
+# Quote a value for SQL: wrap in single quotes, double any embedded quotes.
+sq() {
+  local s="$1"
+  s="${s//\'/\'\'}"
+  printf "'%s'" "$s"
+}
+
+# Run statements against the DB. All args are passed to sqlite3 in order,
+# so dot-commands (.mode, .headers) followed by a SELECT all execute in sequence.
+sql() { sqlite3 "$DB" "$@"; }
+
+# Validate status/priority
+check_status() {
+  local s="$1"
+  [[ " $VALID_STATUSES " == *" $s "* ]] || die "invalid status '$s'. valid: $VALID_STATUSES"
+}
+check_priority() {
+  local p="$1"
+  [[ " $VALID_PRIORITIES " == *" $p "* ]] || die "invalid priority '$p'. valid: $VALID_PRIORITIES"
+}
+
+log_activity() {
+  local id="$1" action="$2" from="$3" to="$4" note="${5:-}"
+  sql "INSERT INTO task_activity (task_id, action, from_value, to_value, note) VALUES ($(sq "$id"), $(sq "$action"), $(sq "$from"), $(sq "$to"), $(sq "$note"));"
+}
+
+require_task() {
+  local id="$1"
+  local n
+  n="$(sql "SELECT COUNT(*) FROM tasks WHERE id=$(sq "$id");")"
+  [[ "$n" -ge 1 ]] || die "no task with id '$id'"
+}
+
+cmd_list() {
+  local where="status!='cancelled'"
+  [[ "${1:-}" == "--all" ]] && where="1=1"
+  sql ".mode column" ".headers on" "SELECT status, id, priority, substr(title,1,58) AS title, assignee FROM tasks WHERE $where ORDER BY CASE status WHEN 'backlog' THEN 0 WHEN 'todo' THEN 1 WHEN 'in_progress' THEN 2 WHEN 'review' THEN 3 WHEN 'done' THEN 4 WHEN 'cancelled' THEN 5 END, column_order, created_at;"
+}
+
+cmd_counts() {
+  sql ".mode column" ".headers on" "SELECT status, COUNT(*) AS n FROM tasks GROUP BY status ORDER BY 1;"
+}
+
+cmd_add() {
+  [[ $# -ge 2 ]] || die "usage: kanban add <id> \"<title>\" [--status= --priority= --tags= --desc= --assignee= --parent=]"
+  local id="$1"; shift
+  local title="$1"; shift
+  local status="todo" priority="medium" tags="" desc="" assignee="" parent=""
+  for arg in "$@"; do
+    case "$arg" in
+      --status=*)   status="${arg#*=}" ;;
+      --priority=*) priority="${arg#*=}" ;;
+      --tags=*)     tags="${arg#*=}" ;;
+      --desc=*)     desc="${arg#*=}" ;;
+      --assignee=*) assignee="${arg#*=}" ;;
+      --parent=*)   parent="${arg#*=}" ;;
+      *) die "unknown option '$arg'" ;;
+    esac
+  done
+  check_status "$status"; check_priority "$priority"
+  [[ -z "$title" ]] && die "title cannot be empty"
+  local existing
+  existing="$(sql "SELECT COUNT(*) FROM tasks WHERE id=$(sq "$id");")"
+  [[ "$existing" -eq 0 ]] || die "task id '$id' already exists"
+  sql "INSERT INTO tasks (id, title, description, status, priority, tags, assignee, parent_id, column_order)
+       VALUES ($(sq "$id"), $(sq "$title"), $(sq "$desc"), $(sq "$status"), $(sq "$priority"), $(sq "$tags"), $(sq "$assignee"), $(sq "$parent"),
+         (SELECT COALESCE(MAX(column_order),0)+1 FROM tasks WHERE status=$(sq "$status")));"
+  log_activity "$id" "created" "" "$status"
+  echo "added $id ($status)"
+}
+
+cmd_show() {
+  [[ $# -ge 1 ]] || die "usage: kanban show <id>"
+  local id="$1"
+  require_task "$id"
+  sql ".mode column" ".headers on" "SELECT * FROM tasks WHERE id=$(sq "$id");"
+  echo "--- activity ---"
+  sql ".mode column" ".headers on" "SELECT at, action, from_value, to_value, substr(note,1,60) AS note FROM task_activity WHERE task_id=$(sq "$id") ORDER BY at, id;"
+}
+
+cmd_move() {
+  [[ $# -ge 2 ]] || die "usage: kanban move <id> <status>"
+  local id="$1" status="$2"
+  check_status "$status"
+  require_task "$id"
+  local old
+  old="$(sql "SELECT status FROM tasks WHERE id=$(sq "$id");")"
+  [[ "$old" == "$status" ]] && { echo "already $status"; return; }
+  sql "UPDATE tasks SET status=$(sq "$status"), column_order=(SELECT COALESCE(MAX(column_order),0)+1 FROM tasks WHERE status=$(sq "$status")) WHERE id=$(sq "$id");"
+  log_activity "$id" "status" "$old" "$status"
+  echo "moved $id: $old -> $status"
+}
+
+cmd_edit() {
+  [[ $# -ge 2 ]] || die "usage: kanban edit <id> [--title= --desc= --priority= --assignee= --tags=]"
+  local id="$1"; shift
+  require_task "$id"
+  local title="" desc="" priority="" assignee="" tags=""
+  local stitle=0 sdesc=0 spriority=0 sassignee=0 stags=0
+  for arg in "$@"; do
+    case "$arg" in
+      --title=*)    title="${arg#*=}"; stitle=1 ;;
+      --desc=*)     desc="${arg#*=}"; sdesc=1 ;;
+      --priority=*) priority="${arg#*=}"; spriority=1 ;;
+      --assignee=*) assignee="${arg#*=}"; sassignee=1 ;;
+      --tags=*)     tags="${arg#*=}"; stags=1 ;;
+      *) die "unknown option '$arg'" ;;
+    esac
+  done
+  local sets=""
+  [[ $stitle -eq 1 ]]    && sets="$sets,title=$(sq "$title")"
+  [[ $sdesc -eq 1 ]]     && sets="$sets,description=$(sq "$desc")"
+  [[ $spriority -eq 1 ]] && { check_priority "$priority"; sets="$sets,priority=$(sq "$priority")"; }
+  [[ $sassignee -eq 1 ]] && sets="$sets,assignee=$(sq "$assignee")"
+  [[ $stags -eq 1 ]]     && sets="$sets,tags=$(sq "$tags")"
+  [[ -z "$sets" ]] && die "nothing to edit; provide at least one --flag=value"
+  sets="${sets#,}"
+  sql "UPDATE tasks SET $sets WHERE id=$(sq "$id");"
+  [[ $stitle -eq 1 ]]    && log_activity "$id" "edited" "" "title"
+  [[ $sdesc -eq 1 ]]     && log_activity "$id" "edited" "" "description"
+  [[ $spriority -eq 1 ]] && log_activity "$id" "priority" "" "$priority"
+  [[ $sassignee -eq 1 ]] && log_activity "$id" "assignee" "" "$assignee"
+  [[ $stags -eq 1 ]]     && log_activity "$id" "edited" "" "tags"
+  echo "edited $id"
+}
+
+cmd_note() {
+  [[ $# -ge 2 ]] || die "usage: kanban note <id> \"<text>\""
+  local id="$1"; shift
+  local text="$*"
+  require_task "$id"
+  log_activity "$id" "comment" "" "" "$text"
+  echo "noted $id"
+}
+
+cmd_search() {
+  [[ $# -ge 1 ]] || die "usage: kanban search \"<query>\""
+  local q="$*"
+  sql ".mode column" ".headers on" "SELECT id, status, priority, substr(title,1,60) AS title FROM tasks WHERE (title || ' ' || COALESCE(description,'')) LIKE $(sq "%$q%") AND status!='done' AND status!='cancelled' ORDER BY status, column_order;"
+}
+
+cmd_tag() {
+  [[ $# -ge 1 ]] || die "usage: kanban tag \"<tag>\""
+  local t="$*"
+  sql ".mode column" ".headers on" "SELECT id, status, substr(title,1,60) AS title FROM tasks WHERE tags LIKE $(sq "%$t%") AND status!='cancelled' ORDER BY status, column_order;"
+}
+
+cmd_subtasks() {
+  [[ $# -ge 1 ]] || die "usage: kanban subtasks <parent_id>"
+  local p="$1"
+  require_task "$p"
+  sql ".mode column" ".headers on" "SELECT id, status, priority, substr(title,1,60) AS title FROM tasks WHERE parent_id=$(sq "$p") ORDER BY column_order;"
+}
+
+cmd_reorder() {
+  [[ $# -ge 2 ]] || die "usage: kanban reorder <id> <n>"
+  local id="$1" n="$2"
+  require_task "$id"
+  [[ "$n" =~ ^-?[0-9]+$ ]] || die "order must be an integer"
+  sql "UPDATE tasks SET column_order=$n WHERE id=$(sq "$id");"
+  echo "reordered $id -> $n"
+}
+
+cmd_delete() {
+  [[ $# -ge 1 ]] || die "usage: kanban delete <id>"
+  local id="$1"
+  require_task "$id"
+  sql "DELETE FROM tasks WHERE id=$(sq "$id");"
+  echo "deleted $id"
+}
+
+cmd_columns() {
+  echo "$VALID_STATUSES" | tr ' ' '\n'
+}
+
+cmd_init() {
+  if [[ "${1:-}" == "--reset" ]]; then
+    "$SCRIPT_DIR/kanban-init.sh" --reset
+  else
+    "$SCRIPT_DIR/kanban-init.sh"
+  fi
+}
+
+main() {
+  [[ $# -ge 1 ]] || { cmd_list; exit 0; }
+  local cmd="$1"; shift
+  ensure_db
+  case "$cmd" in
+    list)     cmd_list "$@" ;;
+    counts)   cmd_counts "$@" ;;
+    add)      cmd_add "$@" ;;
+    show)     cmd_show "$@" ;;
+    move)     cmd_move "$@" ;;
+    start)    cmd_move "$1" in_progress ;;
+    review)   cmd_move "$1" review ;;
+    done)     cmd_move "$1" done ;;
+    cancel)   cmd_move "$1" cancelled ;;
+    block)    cmd_move "$1" backlog ;;
+    todo)     cmd_move "$1" todo ;;
+    edit)     cmd_edit "$@" ;;
+    note)     cmd_note "$@" ;;
+    search)   cmd_search "$@" ;;
+    tag)      cmd_tag "$@" ;;
+    subtasks) cmd_subtasks "$@" ;;
+    reorder)  cmd_reorder "$@" ;;
+    delete)   cmd_delete "$@" ;;
+    columns)  cmd_columns "$@" ;;
+    init)     cmd_init "$@" ;;
+    help|-h|--help)
+      sed -n '2,30p' "$0"
+      ;;
+    *)
+      die "unknown command '$cmd'. try: scripts/kanban help"
+      ;;
+  esac
+}
+
+main "$@"

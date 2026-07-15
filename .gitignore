@@ -43,6 +43,11 @@ yarn-error.log*
 # Next.js build output (migrated away, but keep ignored)
 /.next/
 
+# SQLite kanban board sidecar files (the .db itself is tracked)
+*.db-wal
+*.db-shm
+*.db-journal
+
 # Pi subagent artifacts
 pi-response-formatting-guide.md
 .pi-subagents/
