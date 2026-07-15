@@ -70,41 +70,26 @@ const ChatInner = memo(function ChatInner({
     [],
   );
 
+  // Persist via the onFinish callback — fires directly from the Chat
+  // instance when the assistant response stream completes, which is more
+  // reliable than a useEffect that depends on React's render timing.
+  // Opening an existing conversation never triggers onFinish, so we avoid
+  // the stale-baseline problem that plagued the effect approach.
+  const onPersistRef = useRef(onPersist);
+  onPersistRef.current = onPersist;
+
   const { messages, sendMessage, status, stop } = useChat({
     id,
     messages: initialMessages,
     transport,
+    onFinish: (result) => {
+      // Persist after every completed (or errored) response, but skip
+      // aborts (user pressed Stop) to avoid saving incomplete responses.
+      if (!result.isAbort) {
+        onPersistRef.current(id, result.messages);
+      }
+    },
   });
-
-  // Persist conversation to DB ONLY when the messages have actually changed
-  // (e.g. after a streaming round completes) — never on mount just from
-  // loading an existing conversation. We do this by tracking a signature of
-  // the messages: on the first run we capture the loaded state as the
-  // baseline, and only call onPersist when the signature differs from the
-  // last one we persisted. This is what keeps clicking an older chat from
-  // bumping its updated_at and jumping it to the top of the sidebar.
-  const onPersistRef = useRef(onPersist);
-  onPersistRef.current = onPersist;
-
-  // Initialise the signature to the loaded messages' signature so that:
-  //  • Opening an existing conversation does NOT re-persist on mount
-  //    (the initial sig matches the messages sig → effect skips).
-  //  • A brand-new (empty) conversation has an initial sig of "", which
-  //    never matches any non-empty messages sig → the first persist fires.
-  const lastSigRef = useRef<string>(
-    initialMessages
-      .map((m) => `${m.id}:${m.role}:${JSON.stringify(m.parts)}`)
-      .join("||"),
-  );
-  useEffect(() => {
-    if (messages.length === 0 || status !== "ready") return;
-    const sig = messages
-      .map((m) => `${m.id}:${m.role}:${JSON.stringify(m.parts)}`)
-      .join("||");
-    if (sig === lastSigRef.current) return; // nothing changed since last persist
-    lastSigRef.current = sig;
-    onPersistRef.current(id, messages);
-  }, [id, messages, status]);
 
   const isReady = status === "ready" || status === "error";
   const isStreaming = status === "streaming" || status === "submitted";

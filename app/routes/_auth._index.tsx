@@ -107,7 +107,12 @@ export default function Home() {
       // assessment" chats should not be saved to the DB or shown in the
       // sidebar once the user navigates away.
       const firstUser = messages.find((m) => m.role === "user");
-      if (!firstUser) return;
+      if (!firstUser) {
+        console.warn("[persist] handlePersist called but no user message found", { id, messageCount: messages.length, roles: messages.map((m) => m.role) });
+        return;
+      }
+
+      console.log("[persist] handlePersist called", { id, messageCount: messages.length });
 
       let title = "New assessment";
       const text = (firstUser.parts ?? [])
@@ -132,16 +137,22 @@ export default function Home() {
         // Lazily create the conversation row the first time a message is
         // sent (handleNew no longer creates it up front).
         if (!persistedIdsRef.current.has(id)) {
-          await fetch("/api/conversations", {
+          const createRes = await fetch("/api/conversations", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id, title }),
           });
+          if (!createRes.ok) {
+            const errText = await createRes.text();
+            console.error(
+              `[persist] POST /api/conversations failed: ${createRes.status} ${errText}`,
+            );
+          }
           setPersistedIds((prev) => new Set(prev).add(id));
         }
 
         // Persist messages to DB
-        await fetch(`/api/conversations/${id}`, {
+        const putRes = await fetch(`/api/conversations/${id}`, {
           method: "PUT",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -153,6 +164,12 @@ export default function Home() {
             })),
           }),
         });
+        if (!putRes.ok) {
+          const errText = await putRes.text();
+          console.error(
+            `[persist] PUT /api/conversations/${id} failed: ${putRes.status} ${errText}`,
+          );
+        }
       } catch (err) {
         console.error("Failed to persist messages:", err);
       }
