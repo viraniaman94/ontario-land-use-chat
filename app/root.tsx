@@ -6,7 +6,11 @@ import {
   ScrollRestoration,
 } from "react-router";
 import { TooltipProvider } from "~/components/ui/tooltip";
+import { r2StorageMiddleware } from "~/auth/middleware";
 import "./globals.css";
+
+/** Wire R2 document storage from Cloudflare context (no-op in Node.js dev) */
+export const middleware = [r2StorageMiddleware];
 
 export function Layout({ children }: { children: React.ReactNode }) {
   return (

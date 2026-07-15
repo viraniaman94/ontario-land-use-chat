@@ -26,7 +26,7 @@ const readDocumentTool = tool({
       ),
   }),
   execute: async ({ path: docPath }) => {
-    return readDocument(docPath);
+    return await readDocument(docPath);
   },
 });
 
@@ -38,7 +38,7 @@ const listDocumentsTool = tool({
     "List all available planning documents with their section counts and index paths. Returns the top-level sections index — use this as your starting point to navigate the document knowledge base. Each document has a `_index.md` file listing its individual sections with 1-line summaries. Read a document's `_index.md` to find relevant section files before loading full sections.",
   inputSchema: z.object({}),
   execute: async () => {
-    return listDocuments();
+    return await listDocuments();
   },
 });
 
@@ -56,7 +56,7 @@ const searchDocumentsTool = tool({
       ),
   }),
   execute: async ({ query }) => {
-    return searchDocuments(query);
+    return await searchDocuments(query);
   },
 });
 

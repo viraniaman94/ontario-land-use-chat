@@ -1,13 +1,11 @@
 import { neon } from "@neondatabase/serverless";
-import { readFileSync } from "fs";
-import { join } from "path";
 
 /**
  * Neon Postgres database client.
  *
  * Uses @neondatabase/serverless which communicates with Neon over HTTP,
- * making it ideal for serverless / edge runtimes. The connection string
- * is read from the DATABASE_URL env var.
+ * making it ideal for serverless / edge runtimes (including Cloudflare
+ * Workers). The connection string is read from the DATABASE_URL env var.
  */
 
 const connectionString = process.env.DATABASE_URL;
@@ -29,29 +27,23 @@ let schemaInitialized = false;
 export async function ensureSchema(): Promise<void> {
   if (schemaInitialized) return;
 
-  let schemaSql: string;
-  try {
-    schemaSql = readFileSync(join(process.cwd(), "app/db/schema.sql"), "utf-8");
-  } catch {
-    // Fallback: inline schema in case the file isn't found
-    schemaSql = `
-      CREATE TABLE IF NOT EXISTS conversations (
-        id TEXT PRIMARY KEY,
-        title TEXT NOT NULL DEFAULT 'New assessment',
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-      CREATE TABLE IF NOT EXISTS messages (
-        id TEXT PRIMARY KEY,
-        conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
-        role TEXT NOT NULL,
-        parts JSONB NOT NULL DEFAULT '[]'::jsonb,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-      CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
-      CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC);
-    `;
-  }
+  const schemaSql = `
+    CREATE TABLE IF NOT EXISTS conversations (
+      id TEXT PRIMARY KEY,
+      title TEXT NOT NULL DEFAULT 'New assessment',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      conversation_id TEXT NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
+      role TEXT NOT NULL,
+      parts JSONB NOT NULL DEFAULT '[]'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+    CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id);
+    CREATE INDEX IF NOT EXISTS idx_conversations_updated_at ON conversations(updated_at DESC);
+  `;
 
   // Neon's HTTP driver expects tagged template calls.
   // Split the schema into individual statements and execute each.

@@ -44,3 +44,5 @@ yarn-error.log*
 /.pi-subagents/.next/
 pi-response-formatting-guide.md
 .pi-subagents/
+.dev.vars
+.wrangler/

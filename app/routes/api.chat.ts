@@ -45,7 +45,7 @@ export async function action({ request }: ActionFunctionArgs) {
     }
   }
 
-  const system = buildSystemPrompt();
+  const system = await buildSystemPrompt();
 
   const modelMessages = await convertToModelMessages(messages);
 

@@ -1,6 +1,12 @@
 import { reactRouter } from "@react-router/dev/vite";
+import { cloudflare } from "@cloudflare/vite-plugin";
 import { defineConfig, loadEnv } from "vite";
 import tsconfigPaths from "vite-tsconfig-paths";
+
+// When CLOUDFLARE=1 is set, use the Cloudflare Vite plugin to run server code
+// in the Workers runtime (workerd) and produce a Workers-compatible build.
+// Without it, local dev uses Node.js with filesystem access for documents.
+const useCloudflare = !!process.env.CLOUDFLARE;
 
 export default defineConfig(({ mode }) => {
   // Load ALL env vars (not just VITE_ prefixed) from .env files
@@ -13,6 +19,13 @@ export default defineConfig(({ mode }) => {
   }
 
   return {
-    plugins: [reactRouter(), tsconfigPaths()],
+    plugins: [
+      // Cloudflare plugin must be first when active
+      ...(useCloudflare
+        ? [cloudflare({ viteEnvironment: { name: "ssr" } })]
+        : []),
+      reactRouter(),
+      tsconfigPaths(),
+    ],
   };
 });

@@ -1,6 +1,4 @@
-import path from "path";
-import { readFileSync } from "fs";
-import { listDocuments, getSkillDir } from "./document-service";
+import { listDocuments, readSkillFile } from "./document-service";
 
 /**
  * Build the system prompt for the Ontario Land Use Planning
@@ -12,15 +10,16 @@ import { listDocuments, getSkillDir } from "./document-service";
  *  - Document navigation index (sections-index.md)
  *  - Feasibility report template
  *  - 10 critical rules the agent must follow
+ *
+ * This function is async because document/skill files may be stored in
+ * R2 (Cloudflare Workers) or on the filesystem (Node.js dev).
  */
-export function buildSystemPrompt(): string {
-  const skillDir = getSkillDir();
-  const skillMd = readFileSync(path.join(skillDir, "SKILL.md"), "utf-8");
-  const reportTemplate = readFileSync(
-    path.join(skillDir, "templates/feasibility-report.md"),
-    "utf-8",
-  );
-  const documentIndex = listDocuments();
+export async function buildSystemPrompt(): Promise<string> {
+  const [skillMd, reportTemplate, documentIndex] = await Promise.all([
+    readSkillFile("SKILL.md"),
+    readSkillFile("templates/feasibility-report.md"),
+    listDocuments(),
+  ]);
 
   return `You are an Ontario Land Use Planning Feasibility Assessment Agent. You help users assess whether proposed development projects are feasible under Ontario's land use planning framework, including provincial policy, provincial plans, municipal official plans, and zoning by-laws.
 
