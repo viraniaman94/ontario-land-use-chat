@@ -12,7 +12,11 @@ import { setDocumentStorage } from "~/lib/agent/document-service";
 export const r2StorageMiddleware: MiddlewareFunction = async () => {
   // R2 bucket is set on globalThis by the Worker entry — not via context
   // (v8 middleware requires RouterContextProvider, not plain objects)
-  const r2 = (globalThis as { __R2_BUCKET?: R2Bucket }).__R2_BUCKET;
+  // R2Bucket is a Cloudflare Workers type not available in the app/
+  // tsconfig scope (which doesn't include @cloudflare/workers-types).
+  // setDocumentStorage() accepts `unknown` and casts internally, so
+  // typing the global as `unknown` is sufficient here.
+  const r2 = (globalThis as { __R2_BUCKET?: unknown }).__R2_BUCKET;
   if (r2) {
     setDocumentStorage(r2);
   }

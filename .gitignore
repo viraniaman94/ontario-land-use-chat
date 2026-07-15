@@ -47,4 +47,6 @@ yarn-error.log*
 pi-response-formatting-guide.md
 .pi-subagents/
 .dev.vars
+# Cloudflare
+er-configuration.d.ts
 .wrangler/
