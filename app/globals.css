@@ -233,6 +233,29 @@
     @apply inline-block h-2 w-2 rounded-full bg-current animate-pulse;
   }
 
+  /* Stream status indicator dots (see use-stream-status hook) */
+  .pi-status-dot {
+    @apply inline-block h-2.5 w-2.5 shrink-0 rounded-full;
+  }
+  .pi-status-dot-idle {
+    @apply bg-foreground/40;
+  }
+  .pi-status-dot-waiting {
+    @apply bg-amber-500 animate-pulse;
+  }
+  .pi-status-dot-streaming {
+    @apply bg-emerald-500 animate-pulse;
+  }
+  .pi-status-dot-stopped {
+    @apply bg-muted-foreground;
+  }
+  .pi-status-dot-error {
+    @apply bg-destructive;
+  }
+  .pi-status-dot-complete {
+    @apply bg-emerald-500;
+  }
+
   /* Tool output truncation */
   .pi-truncated {
     @apply text-xs text-muted-foreground italic;

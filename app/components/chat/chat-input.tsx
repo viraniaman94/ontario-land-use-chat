@@ -1,16 +1,23 @@
-
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import type { StreamStatus } from "@/hooks/use-stream-status";
 
 interface ChatInputProps {
   onSend: (text: string) => void;
   onStop?: () => void;
   disabled?: boolean;
   isStreaming?: boolean;
+  streamStatus?: StreamStatus;
 }
 
-export function ChatInput({ onSend, onStop, disabled, isStreaming }: ChatInputProps) {
+export function ChatInput({
+  onSend,
+  onStop,
+  disabled,
+  isStreaming,
+  streamStatus = "idle",
+}: ChatInputProps) {
   const [input, setInput] = useState("");
 
   const handleSubmit = (e: FormEvent) => {
@@ -27,6 +34,10 @@ export function ChatInput({ onSend, onStop, disabled, isStreaming }: ChatInputPr
       handleSubmit(e as unknown as FormEvent);
     }
   };
+
+  // Button label reflects the consolidated stream state while in flight;
+  // otherwise it's the normal Send affordance.
+  const stopLabel = streamStatus === "waiting" ? "Waiting…" : "Stop";
 
   return (
     <form onSubmit={handleSubmit} className="border-t bg-background p-4">
@@ -46,14 +57,16 @@ export function ChatInput({ onSend, onStop, disabled, isStreaming }: ChatInputPr
             size="lg"
             variant="destructive"
             onClick={onStop}
+            className="min-w-[88px]"
           >
-            Stop
+            {stopLabel}
           </Button>
         ) : (
           <Button
             type="submit"
             size="lg"
             disabled={disabled || !input.trim()}
+            className="min-w-[88px]"
           >
             Send
           </Button>

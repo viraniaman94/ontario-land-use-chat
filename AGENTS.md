@@ -79,6 +79,7 @@ app/
     ui/                          13 vendored shadcn/ui primitives (base-ui based)
   hooks/
     use-conversations.ts          ConversationMeta type only (CRUD moved to route layer)
+    use-stream-status.ts        Consolidated chat stream status (idle/waiting/streaming/stopped/error/complete) + stall timeout
     use-mobile.ts                Viewport breakpoint hook (768px)
   lib/
     ai-provider.ts               Ollama Cloud provider + MODEL_ID ("glm-5.2")
@@ -121,14 +122,12 @@ owns `useChat`) → `ChatHeader`, `ChatMessages` (auto-scroll, empty state,
 "Analyzing…"; `AssistantMessage` routes parts: `MarkdownContent` text,
 `ThinkingBlock` reasoning, `ToolCallBlock` tool-* state-tinted, `step-start`
 separators; `ChatMessage` for user bubbles), `ChatInput` (textarea +
-send/stop).
+send/stop), `StreamStatusBar` (always-on stream-state line: dot + label +
+elapsed timer, rendered above the input).
 
 ### Vendored shadcn/ui Components (13)
 
-`avatar`, `bubble` (custom, not from registry), `button`, `card`, `input`,
-`scroll-area`, `separator`, `sheet`, `sidebar` (722 lines — the largest),
-`skeleton`, `sonner`, `textarea`, `tooltip`. All based on `@base-ui/react`
-primitives (not Radix UI).
+`avatar`, `bubble` (custom, not from registry), `button`, `card`, `input`, `scroll-area`, `separator`, `sheet`, `sidebar` (722 lines — the largest), `skeleton`, `sonner`, `textarea`, `tooltip`. All based on `@base-ui/react` primitives (not Radix UI).
 
 ## How the Agent Works
 

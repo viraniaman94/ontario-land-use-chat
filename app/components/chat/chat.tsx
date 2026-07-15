@@ -4,6 +4,8 @@ import { DefaultChatTransport, type UIMessage } from "ai";
 import { ChatHeader } from "./chat-header";
 import { ChatMessages } from "./chat-messages";
 import { ChatInput } from "./chat-input";
+import { StreamStatusBar } from "./stream-status-bar";
+import { useStreamStatus } from "@/hooks/use-stream-status";
 
 interface ChatProps {
   id: string;
@@ -78,7 +80,7 @@ const ChatInner = memo(function ChatInner({
   const onPersistRef = useRef(onPersist);
   onPersistRef.current = onPersist;
 
-  const { messages, sendMessage, status, stop } = useChat({
+  const { messages, sendMessage, status, error, stop } = useChat({
     id,
     messages: initialMessages,
     transport,
@@ -91,20 +93,33 @@ const ChatInner = memo(function ChatInner({
     },
   });
 
-  const isReady = status === "ready" || status === "error";
-  const isStreaming = status === "streaming" || status === "submitted";
+  const streamStatus = useStreamStatus({
+    chatStatus: status,
+    error,
+    messages,
+  });
 
   return (
     <div className="flex h-svh w-full flex-col">
       <ChatHeader />
       <ChatMessages messages={messages} status={status} />
+      <StreamStatusBar info={streamStatus} />
       <ChatInput
         onSend={(text) => {
+          streamStatus.markSend();
           void sendMessage({ text });
         }}
-        onStop={isStreaming ? () => stop() : undefined}
-        disabled={!isReady}
-        isStreaming={isStreaming}
+        onStop={
+          streamStatus.inFlight
+            ? () => {
+                streamStatus.markStop();
+                stop();
+              }
+            : undefined
+        }
+        disabled={streamStatus.inFlight}
+        isStreaming={streamStatus.inFlight}
+        streamStatus={streamStatus.status}
       />
     </div>
   );
