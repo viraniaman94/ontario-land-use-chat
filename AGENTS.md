@@ -40,7 +40,7 @@ gitignored. No external deps (system `sqlite3`).
 - **Vite 7** (Environment API); **Bun** as package manager / runtime
 - **AI SDK v7** (`ai`, `@ai-sdk/react`, `@ai-sdk/openai-compatible`) — UI uses
   `UIMessage[]` with a `parts` array (NOT a `content` string)
-- **OpenAI-compatible LLM provider** — Ollama Cloud, model `glm-5.2`
+- **OpenAI-compatible LLM provider** — Ollama Cloud, model `deepseek-v4-pro`
   (`OLLAMA_API_KEY`, base URL `https://ollama.com/v1`)
 - **Neon Postgres** (`@neondatabase/serverless` — HTTP-based, serverless-friendly)
   for persistent conversation and message storage
@@ -82,7 +82,7 @@ app/
     use-stream-status.ts        Consolidated chat stream status (idle/waiting/streaming/stopped/error/complete) + stall timeout
     use-mobile.ts                Viewport breakpoint hook (768px)
   lib/
-    ai-provider.ts               Ollama Cloud provider + MODEL_ID ("glm-5.2")
+    ai-provider.ts               Ollama Cloud provider + MODEL_ID ("deepseek-v4-pro")
     agent/
       document-service.ts        Document read/list/search, R2 + filesystem dual-mode, cache
       tools.ts                   AI SDK tool defs: readDocument, listDocuments, searchDocuments

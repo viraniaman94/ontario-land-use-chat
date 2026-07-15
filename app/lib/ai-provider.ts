@@ -20,4 +20,4 @@ export const ollamaCloud = createOpenAICompatible({
 });
 
 /** Default model identifier used across the application. */
-export const MODEL_ID = "glm-5.2";
+export const MODEL_ID = "deepseek-v4-pro";
