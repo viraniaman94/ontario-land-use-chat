@@ -196,7 +196,7 @@ export function useStreamStatus({
       case "stopped":
         return "Stopped";
       case "error":
-        return error?.message ? `Error: ${error.message}` : "Request failed";
+        return summarizeError(error);
       case "complete":
         return "Complete";
       default:
@@ -205,4 +205,34 @@ export function useStreamStatus({
   }, [status, stalled, elapsedSec, error]);
 
   return { status, stalled, elapsedSec, label, inFlight, markSend, markStop };
+}
+
+/**
+ * Reduce a raw `useChat` error into a short, human-readable status label.
+ *
+ * Platform/transport failures often surface as bulky payloads: e.g. a
+ * Cloudflare Worker 1102 ("Worker exceeded resource limits") returns an
+ * entire HTML error page, which the AI SDK wraps verbatim in
+ * `error.message`. Printing that raw swamps the status bar, so we detect
+ * known platform/HTML errors and fall back to a concise generic message,
+ * truncating anything else to keep the line readable.
+ */
+function summarizeError(error: Error | undefined): string {
+  if (!error) return "Request failed";
+  const msg = error.message ?? String(error);
+
+  // Cloudflare Worker resource-limit (error 1102) — served as an HTML page.
+  if (/exceeded resource limits/i.test(msg) || /\b1102\b/.test(msg)) {
+    return "Error: worker exceeded resource limits (try again)";
+  }
+  // Any HTML/non-JSON response body leaked into the message.
+  if (/<!doctype|<html|<head\b/i.test(msg)) {
+    return "Error: server returned an error page (try again)";
+  }
+  // Network-level failures.
+  if (/failed to fetch|networkerror|load failed/i.test(msg)) {
+    return "Error: network request failed";
+  }
+  // Keep long provider messages readable.
+  return msg.length > 120 ? `Error: ${msg.slice(0, 117)}…` : `Error: ${msg}`;
 }
