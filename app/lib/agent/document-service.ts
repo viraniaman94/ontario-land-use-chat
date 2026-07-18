@@ -9,6 +9,10 @@
 // Reads are synchronous and cached in-memory for the process lifetime
 // (no TTL — restart the process to pick up document updates).
 
+import fs from "node:fs";
+import path from "node:path";
+import os from "node:os";
+
 // -- Configuration ---------------------------------------------------------
 const MAX_CHARS = 50_000;
 const TRUNCATION_MESSAGE = "\n\n[... document truncated ...]";
@@ -18,25 +22,7 @@ const docCache = new Map<string, string>();
 let searchIndexCache: Map<string, string> | null = null;
 
 // -- Filesystem helpers ----------------------------------------------------
-function nodeRequire(name: string): any {
-  return (0, eval)("require")(name);
-}
-
-function getFs() {
-  return nodeRequire("fs") as typeof import("fs");
-}
-
-function getPath() {
-  return nodeRequire("path") as typeof import("path");
-}
-
-function getOs() {
-  return nodeRequire("os") as typeof import("os");
-}
-
 function getDocsDir(): string {
-  const os = getOs();
-  const path = getPath();
   const skillDir = path.join(
     os.homedir(),
     ".hermes/skills/ontario-land-use-feasibility",
@@ -47,13 +33,10 @@ function getDocsDir(): string {
 }
 
 function getSkillDir(): string {
-  const os = getOs();
-  const path = getPath();
   return path.join(os.homedir(), ".hermes/skills/ontario-land-use-feasibility");
 }
 
 function resolveSafe(relPath: string): string {
-  const path = getPath();
   const root = getDocsDir();
   const resolved = path.resolve(root, relPath);
   if (!resolved.startsWith(root + path.sep) && resolved !== root) {
@@ -74,7 +57,6 @@ export async function readDocument(relPath: string): Promise<string> {
   const cached = docCache.get(relPath);
   if (cached) return cached;
 
-  const fs = getFs();
   const fullPath = resolveSafe(relPath);
   if (!fs.existsSync(fullPath)) {
     throw new Error(
@@ -98,8 +80,6 @@ export async function readDocument(relPath: string): Promise<string> {
  * Return the top-level sections index.
  */
 export async function listDocuments(): Promise<string> {
-  const fs = getFs();
-  const path = getPath();
   const docsDir = getDocsDir();
   const sectionsIndex = path.join(docsDir, "sections-index.md");
   if (fs.existsSync(sectionsIndex)) {
@@ -181,8 +161,6 @@ async function getSearchIndex(): Promise<Map<string, string>> {
 
   const index = new Map<string, string>();
 
-  const fs = getFs();
-  const path = getPath();
   const docsDir = getDocsDir();
 
   // Top-level index
@@ -215,8 +193,6 @@ async function getSearchIndex(): Promise<Map<string, string>> {
  * Read a file from the skill directory (SKILL.md, templates/*, etc.)
  */
 export async function readSkillFile(relPath: string): Promise<string> {
-  const fs = getFs();
-  const path = getPath();
   const skillDir = getSkillDir();
   const fullPath = path.join(skillDir, relPath);
   return fs.readFileSync(fullPath, "utf-8");
