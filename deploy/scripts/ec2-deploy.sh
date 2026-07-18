@@ -19,6 +19,10 @@ HEALTH_URL="http://localhost:3000/login"
 
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 
+# Non-interactive SSH sessions don't source .bashrc, so bun (installed to
+# ~/.bun/bin by bun.sh/install) isn't on PATH. Prepend it.
+export PATH="$HOME/.bun/bin:$PATH"
+
 cd "$APP_DIR"
 
 log "Pulling latest code…"
