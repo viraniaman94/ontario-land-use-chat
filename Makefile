@@ -197,6 +197,7 @@ ec2-setup:
 # tree (kept out of git), then runs ec2-deploy.sh on EC2.
 ec2-deploy: ec2-push-systemd
 	@echo ">>> Syncing skill documents to $(EC2_HOST):$(EC2_APP_DIR)/skill/documents/…"
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'mkdir -p $(EC2_APP_DIR)/skill/documents'
 	$(RSYNC) --delete \
 	  $(SKILL_DIR)/documents/ \
 	  $(EC2_USER)@$(EC2_HOST):$(EC2_APP_DIR)/skill/documents/
@@ -221,6 +222,7 @@ ec2-push-nginx:
 # tracked skill scaffolding (SKILL.md, templates/, references/) travels via git
 # in `make ec2-deploy`; this target is for document-only updates.
 ec2-sync-docs:
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'mkdir -p $(EC2_APP_DIR)/skill/documents'
 	$(RSYNC) --delete \
 	  $(SKILL_DIR)/documents/ \
 	  $(EC2_USER)@$(EC2_HOST):$(EC2_APP_DIR)/skill/documents/
