@@ -157,12 +157,13 @@ The agent navigates without loading entire large documents:
 
 Documents are read from the filesystem at `LAND_USE_DOCS_DIR` or the default
 `~/.hermes/skills/ontario-land-use-feasibility/documents`. `resolveSafe()`
-guards path traversal; Node built-ins (`fs`,`path`,`os`) loaded via lazy
-`eval("require")` to avoid bundler issues. On EC2, docs are synced from a
-local Mac via `make ec2-sync-docs` (rsync).
+guards path traversal; uses normal ESM `node:fs`/`node:path`/`node:os`
+imports. On EC2, docs are synced from a local Mac via `make ec2-sync-docs`
+(rsync).
 
 In-memory caches (`docCache`, `searchIndexCache`) persist for the process
 lifetime with no TTL — restart the service to pick up doc updates.
+
 ### PDF → Markdown → Split Section Files Pipeline
 
 1. **Convert:** `make convert-docs` → `scripts/convert_pdfs.py` (Marker + LLM,
@@ -232,7 +233,7 @@ make split-docs           # split .md docs into section files + indexes
 bun run db:setup          # create Neon Postgres schema
 bun run typecheck         # react-router typegen && tsc --noEmit
 ./scripts/kanban-init.sh  # (re)create the local SQLite kanban board (tasks/kanban.db)
-bun run setup:hooks       # (re)install git hooks (pre-commit size guard + pre-push EC2 deploy)
+bun run setup:hooks       # (re)install git hooks (pre-commit guard + pre-push EC2 deploy reminder)
 
 make ec2-setup       # one-time: install Node, Bun, nginx, ufw, clone repo
 make ec2-sync-docs   # rsync skill docs to EC2 + restart (clears doc cache)
@@ -240,9 +241,8 @@ make ec2-deploy      # git pull → bun install → build → systemctl restart
 make ec2-status      # service status + health check   (also: ec2-logs, ec2-restart, ec2-ssh)
 ```
 
-Dev server runs on **port 5173** (Vite default). Production server defaults to
-**port 3000**. The Makefile uses port 3001 (to avoid collision with a local
-Hermes gateway on 3000).
+Dev server runs on **port 5173** (Vite default). Production defaults to
+**port 3000**. The Makefile uses port 3001 (Hermes gateway on 3000).
 
 ## Conventions / Gotchas
 
