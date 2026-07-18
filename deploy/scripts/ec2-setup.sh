@@ -57,10 +57,13 @@ cd "$APP_DIR"
 log "Installing dependencies…"
 bun install
 
-# ─── 5. Skill docs directory ────────────────────────────────────────────
-log "Creating skill directory structure…"
-mkdir -p "$HOME/.hermes/skills/ontario-land-use-feasibility/documents"
-mkdir -p "$HOME/.hermes/skills/ontario-land-use-feasibility/templates"
+# ─── 5. Skill documents directory ──────────────────────────────────────
+# The skill scaffolding (SKILL.md, templates/, references/) is tracked in git
+# and arrives with the repo clone above. Only the gitignored documents/ tree
+# is synced separately via `make ec2-deploy` (rsync). Ensure the destination
+# exists so the first deploy's rsync lands cleanly.
+log "Creating skill documents directory…"
+mkdir -p "$APP_DIR/skill/documents"
 
 # ─── 6. Firewall (allow SSH + nginx; app port 3000 stays local) ─────────
 log "Configuring UFW firewall…"
@@ -87,7 +90,7 @@ sudo nginx -t && sudo systemctl reload nginx
 
 log "===================================================="
 log "EC2 setup complete. Next steps:"
-log "  1. From local Mac:  make ec2-sync-docs        # transfer documents"
+log "  1. From local Mac:  make ec2-deploy        # syncs docs + deploys code"
 log "  2. Create .env on EC2 at $APP_DIR/.env with:"
 log "       DATABASE_URL, OLLAMA_API_KEY, SESSION_SECRET"
 log "     (generate SESSION_SECRET with: openssl rand -base64 48)"

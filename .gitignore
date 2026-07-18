@@ -40,6 +40,12 @@ yarn-error.log*
 /scripts/convert-report.json
 /scripts/convert-report.csv
 
+# Skill planning documents — generated from PDFs, too large to track.
+# The skill scaffolding (skill/SKILL.md, templates/, references/) IS tracked;
+# only skill/documents/ is excluded and synced to EC2 via `make ec2-sync-docs`
+# (or automatically during `make ec2-deploy`).
+/skill/documents/
+
 # Next.js build output (migrated away, but keep ignored)
 /.next/
 

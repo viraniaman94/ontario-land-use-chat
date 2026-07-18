@@ -61,7 +61,7 @@ ENV_FILE = REPO_ROOT / ".env.local"
 REPORT_JSON = Path(__file__).resolve().parent / "convert-report.json"
 REPORT_CSV = Path(__file__).resolve().parent / "convert-report.csv"
 
-DEFAULT_SKILL_DOCS = Path.home() / ".hermes/skills/ontario-land-use-feasibility/documents"
+DEFAULT_SKILL_DOCS = REPO_ROOT / "skill" / "documents"
 DEFAULT_BASE_URL = "https://ollama.com/v1"
 DEFAULT_MODEL = "deepseek-v4-flash"
 DEFAULT_MARKER_CMD = "uvx --from marker-pdf marker_single"

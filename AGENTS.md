@@ -82,6 +82,8 @@ app/
       tools.ts                   AI SDK tool defs: readDocument, listDocuments, searchDocuments
       system-prompt.ts           Builds system prompt (SKILL.md + sections index + template + 10 rules)
     utils.ts                     cn() helper
+skill/                             Vendored skill content (SKILL.md, templates/, references/ tracked;
+  documents/                     Planning docs — GITIGNORED, synced to EC2 via rsync)
 scripts/
   convert_pdfs.py                Marker + LLM PDF→Markdown converter; writes ./converted-docs/*.md
   split_markdown.py              Splits .md docs into section files with _index.md + sections-index.md
@@ -135,31 +137,29 @@ The chat route (`api.chat.ts`) wraps `streamText({ model, system, messages,
 tools, stopWhen: isStepCount(20), temperature: 0.2 })` and returns a UI message
 stream (SSE) via `createUIMessageStreamResponse`.
 
-### Document Navigation
+### Document Navigation & Storage
 
-All planning documents are stored as `.md` files. Large documents (200 KB –
-900 KB) are split into individual section files by `scripts/split_markdown.py`,
-creating a navigable directory structure:
+Documents live under the repo-vendored `skill/` directory:
 
-```
-documents/
-  sections-index.md                  # top-level index: every doc + section count + paths
-  provincial/pps-2024/_index.md       # per-doc index: sections w/ 1-line summaries
-  provincial/pps-2024/06-22-housing.md # a specific split section file
-  upper-tier/... single-tier/... zoning/...
-```
+| Path | Tracked? | Purpose |
+|------|----------|---------|
+| `skill/SKILL.md` | yes | 10-step assessment procedure |
+| `skill/templates/feasibility-report.md` | yes | Report template |
+| `skill/references/` | yes | Human reference notes |
+| `skill/documents/` | **no** (gitignored) | 1,676 planning .md files, split sections, indexes |
 
-The agent navigates without loading entire large documents:
-`listDocuments()` → `sections-index.md`, then `readDocument("<doc>/_index.md")`
+Large documents (200 KB–900 KB) are split by `scripts/split_markdown.py`
+into section files with per-doc `_index.md` + top-level `sections-index.md`.
+The agent navigates without loading whole documents:
+`listDocuments()` → `sections-index.md` → `readDocument("<doc>/_index.md")`
 → `readDocument("<doc>/<section>.md")`.
 
-### Document Storage
-
-Documents are read from the filesystem at `LAND_USE_DOCS_DIR` or the default
-`~/.hermes/skills/ontario-land-use-feasibility/documents`. `resolveSafe()`
-guards path traversal; uses normal ESM `node:fs`/`node:path`/`node:os`
-imports. On EC2, docs are synced from a local Mac via `make ec2-sync-docs`
-(rsync).
+`document-service.ts` resolves paths repo-relative: skill root `<repo>/skill/`
+(override `LAND_USE_SKILL_DIR`), documents dir `<skill>/documents/` (override
+`LAND_USE_DOCS_DIR`). `resolveSafe()` guards path traversal; locates the repo
+root via `import.meta.url` (falls back to `process.cwd()`, set by systemd).
+Documents stay out of git and sync to EC2 via rsync in `make ec2-deploy` (or
+`make ec2-sync-docs` for doc-only updates).
 
 In-memory caches (`docCache`, `searchIndexCache`) persist for the process
 lifetime with no TTL — restart the service to pick up doc updates.
@@ -171,8 +171,10 @@ lifetime with no TTL — restart the service to pick up doc updates.
 2. **Copy:** `make copy-converted-docs` → skill `documents/` dir
 3. **Split:** `make split-docs` → `split_markdown.py` → section files +
    `_index.md` per doc + top-level `sections-index.md`
-4. **Sync to EC2:** `make ec2-sync-docs` → rsync the skill dir to the EC2
-   instance + restart the service (clears the in-memory doc cache).
+4. **Sync to EC2:** `make ec2-sync-docs` (or `make ec2-deploy`) → rsync
+   `skill/documents/` to the EC2 instance + restart the service (clears the
+   in-memory doc cache). The tracked scaffolding (`SKILL.md`, `templates/`,
+   `references/`) travels via git in `ec2-deploy`; only `documents/` is rsync'd.
 
 ## Authentication
 
@@ -215,7 +217,8 @@ Session is a signed cookie (`createCookieSessionStorage`), `httpOnly: true`,
 | `OLLAMA_BASE_URL` | no | `https://ollama.com/v1` | Override LLM endpoint |
 | `APP_PASSWORD` | no | `ontario2025` | Single shared access password |
 | `SESSION_SECRET` | no | (dev default) | Cookie signing secret (32+ chars) |
-| `LAND_USE_DOCS_DIR` | no | skill `documents/` | Override filesystem docs directory |
+| `LAND_USE_SKILL_DIR` | no | `<repo>/skill` | Override the skill root (SKILL.md, templates, documents) |
+| `LAND_USE_DOCS_DIR` | no | `<skill>/documents` | Override only the documents directory |
 
 On EC2, all env vars live in `/opt/ontario-land-use-chat/.env` (loaded by the
 systemd unit's `EnvironmentFile` and by `vite.config.ts` `loadEnv` at build time).
@@ -236,8 +239,8 @@ bun run typecheck         # react-router typegen && tsc --noEmit
 bun run setup:hooks       # (re)install git hooks (pre-commit guard + pre-push EC2 deploy reminder)
 
 make ec2-setup       # one-time: install Node, Bun, nginx, ufw, clone repo
-make ec2-sync-docs   # rsync skill docs to EC2 + restart (clears doc cache)
-make ec2-deploy      # git pull → bun install → build → systemctl restart
+make ec2-sync-docs   # rsync skill/documents/ to EC2 + restart (doc-only update)
+make ec2-deploy      # rsync skill/documents/ + git pull + build + restart
 make ec2-status      # service status + health check   (also: ec2-logs, ec2-restart, ec2-ssh)
 ```
 
@@ -246,11 +249,9 @@ Dev server runs on **port 5173** (Vite default). Production defaults to
 
 ## Conventions / Gotchas
 
-- **Always use `bun`, never `npm` or `npx`.** This project uses Bun as
-  its package manager and runtime. The `bun.lock` is the source of truth;
-  `package-lock.json` is stale and should not be relied upon. Run scripts with
-  `bun run <script>`, install deps with `bun install`, and run ad-hoc binaries
-  with `bunx` (not `npx`).
+- **Always use `bun`, never `npm` or `npx`.** `bun.lock` is the source of truth
+  (`package-lock.json` is stale). Run scripts with `bun run`, deps with
+  `bun install`, ad-hoc binaries with `bunx`.
 - **`UIMessage` carries content in `parts`, not `content`.** The chat route
   explicitly validates this and returns 400 if legacy `{ role, content }`
   messages are posted.
@@ -260,16 +261,12 @@ Dev server runs on **port 5173** (Vite default). Production defaults to
   persistence goes through API resource routes (`/api/conversations*`).
 - **Optimistic UI:** `_auth._index.tsx` updates local state immediately,
   then persists asynchronously via fetch.
-- **Document cache has no TTL:** `docCache`/`searchIndexCache` in
-  `document-service.ts` persist for the process lifetime. Restart the
-  service after updating documents (`make ec2-sync-docs` does this).
+- **Skill content is vendored at `skill/`** (see Document Storage): scaffolding git-tracked, `documents/` gitignored + rsync'd to EC2. `LAND_USE_SKILL_DIR`/`LAND_USE_DOCS_DIR` override paths.
 - **Custom CSS theme classes:** `pi-streaming-cursor`, `pi-pulse-dot`,
   `pi-thinking-text`, `pi-tool-pending/error/success`, `pi-diff-added/removed/`
   `context`, `pi-md-heading/code/link/quote/list-bullet` (`app/globals.css`).
 - **`use-conversations.ts` is vestigial** — only the `ConversationMeta` type;
   CRUD lives in the route component and API routes.
-- The skill dir (`~/.hermes/skills/...`) is environment-specific and untracked —
-  don't hardcode its contents.
 
 ## Deployment
 
@@ -277,13 +274,14 @@ Dev server runs on **port 5173** (Vite default). Production defaults to
 instance as a systemd service behind nginx with TLS via certbot on
 `ontariochat.duckdns.org`. The Node.js build (`bun run build` →
 `react-router-serve`) is the production runtime. Documents are read from
-the filesystem, synced via `make ec2-sync-docs`.
+the repo-vendored `skill/documents/` tree (gitignored), synced via
+`make ec2-deploy` (or `make ec2-sync-docs` for doc-only updates).
 
 | Concern | EC2 solution |
 |---------|--------------|
 | Process manager | `deploy/systemd/ontario-land-use-chat.service` |
 | Reverse proxy / TLS | `deploy/nginx/ontario-land-use-chat.conf` + certbot |
-| Document storage | Filesystem, synced via `make ec2-sync-docs` (rsync + restart) |
+| Document storage | Filesystem under `skill/documents/` (gitignored), synced via `make ec2-deploy` / `make ec2-sync-docs` (rsync + restart) |
 | Deploys | `make ec2-deploy` (git pull → bun install → build → systemctl restart) |
 | Logs / status | `make ec2-logs` / `make ec2-status` |
 

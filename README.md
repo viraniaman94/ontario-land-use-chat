@@ -24,9 +24,9 @@ User message
 ```
 
 Planning documents are **read from disk** — they are not bundled, uploaded,
-or sent to a vector store. The app expects the Hermes skill to be installed
-at `~/.hermes/skills/ontario-land-use-feasibility/documents/` (269 MB across
-41 files).
+or sent to a vector store. The skill is vendored in the repo at `skill/`
+(`SKILL.md`, `templates/`, `references/` tracked; `documents/` gitignored,
+~269 MB across 41 files, synced to EC2 via rsync during deploy).
 
 ## Tech stack
 
@@ -84,9 +84,9 @@ registration. The password is checked via a signed cookie session.
 - **Bun 1.3+** — `brew install bun`
 - A valid `OLLAMA_API_KEY`
 - A Neon Postgres database (free tier at [neon.tech](https://neon.tech))
-- The Hermes land-use skill installed at
-  `~/.hermes/skills/ontario-land-use-feasibility/` (with `SKILL.md`,
-  `documents/`, `templates/feasibility-report.md`)
+- The land-use skill is vendored in the repo at `skill/` (the scaffolding is
+  tracked in git; the `documents/` tree is gitignored and synced to EC2 via
+  `make ec2-deploy` / `make ec2-sync-docs`).
 
 ## Install
 

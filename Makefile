@@ -127,9 +127,10 @@ logs-tun:
 
 PYTHON := $(shell command -v python3 || echo python3)
 CONVERT_SCRIPT := $(APP_DIR)/scripts/convert_pdfs.py
+SKILL_DIR := $(APP_DIR)/skill
 
 convert-docs:
-	$(PYTHON) $(CONVERT_SCRIPT)
+	$(PYTHON) $(CONVERT_SCRIPT) --input $(SKILL_DIR)/documents
 
 # Resumable batch over a specific folder, 2 parallel jobs.
 convert-docs-dir:
@@ -145,13 +146,14 @@ convert-docs-dry:
 # --- Copy converted Markdown to the skill documents directory ---
 #
 # After running `make convert-docs` (which writes to ./converted-docs/),
-# copy the .md files into the skill's documents/ directory so the agent
-# reads them directly.
+# copy the .md files into the vendored skill documents/ directory so the
+# agent reads them directly. The destination is repo-relative (skill/documents/,
+# gitignored) — NOT ~/.hermes.
 
 copy-converted-docs:
 	@for md in converted-docs/*/*.md; do \
 	  rel=$${md#converted-docs/}; \
-	  dest=$$HOME/.hermes/skills/ontario-land-use-feasibility/documents/$$rel; \
+	  dest=$(SKILL_DIR)/documents/$$rel; \
 	  mkdir -p $$(dirname $$dest); \
 	  cp $$md $$dest; \
 	  echo "Copied: $$rel"; \
@@ -168,7 +170,7 @@ copy-converted-docs:
 SPLIT_SCRIPT := $(APP_DIR)/scripts/split_markdown.py
 
 split-docs:
-	uv run --with marko $(SPLIT_SCRIPT)
+	uv run --with marko $(SPLIT_SCRIPT) $(SKILL_DIR)/documents
 
 # ===================================================================
 # EC2 deployment (primary production)
@@ -188,11 +190,16 @@ ec2-ssh:
 ec2-setup:
 	@echo ">>> Provisioning EC2 instance $(EC2_HOST)…"
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'bash -s' < deploy/scripts/ec2-setup.sh
-	@echo ">>> EC2 setup complete. Next: make ec2-sync-docs && make ec2-deploy"
+	@echo ">>> EC2 setup complete. Next: make ec2-deploy  (syncs docs + deploys code)"
 
-# Deploy/update the app: git pull → bun install → build → restart service.
-# Pushes the latest deploy scripts first, then runs ec2-deploy.sh on EC2.
+# Deploy/update the app: rsync documents → git pull → build → restart service.
+# Pushes the latest deploy scripts first, syncs the gitignored skill/documents/
+# tree (kept out of git), then runs ec2-deploy.sh on EC2.
 ec2-deploy: ec2-push-systemd
+	@echo ">>> Syncing skill documents to $(EC2_HOST):$(EC2_APP_DIR)/skill/documents/…"
+	$(RSYNC) --delete \
+	  $(SKILL_DIR)/documents/ \
+	  $(EC2_USER)@$(EC2_HOST):$(EC2_APP_DIR)/skill/documents/
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'cd $(EC2_APP_DIR) && bash deploy/scripts/ec2-deploy.sh'
 
 # Install/refresh the systemd unit file on EC2 (does not start it).
@@ -209,13 +216,14 @@ ec2-push-nginx:
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo ln -sf /etc/nginx/sites-available/ontario-land-use-chat.conf /etc/nginx/sites-enabled/ontario-land-use-chat.conf && sudo rm -f /etc/nginx/sites-enabled/default && sudo nginx -t && sudo systemctl reload nginx'
 	@echo "nginx config installed + reloaded. Run certbot next: sudo certbot --nginx -d $(EC2_HOST)"
 
-# Sync the skill documents directory (documents/ + SKILL.md + templates/)
-# from the local Mac to EC2. Restart the service AFTERWARDS to clear the
-# in-memory document cache (no TTL).
+# Sync the gitignored skill/documents/ tree from the local repo to EC2, then
+# restart the service to clear the in-memory document cache (no TTL). The
+# tracked skill scaffolding (SKILL.md, templates/, references/) travels via git
+# in `make ec2-deploy`; this target is for document-only updates.
 ec2-sync-docs:
-	$(RSYNC) \
-	  ~/.hermes/skills/ontario-land-use-feasibility/ \
-	  $(EC2_USER)@$(EC2_HOST):~/.hermes/skills/ontario-land-use-feasibility/
+	$(RSYNC) --delete \
+	  $(SKILL_DIR)/documents/ \
+	  $(EC2_USER)@$(EC2_HOST):$(EC2_APP_DIR)/skill/documents/
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo systemctl restart ontario-land-use-chat'
 	@echo "Docs synced + service restarted (cache cleared)."
 

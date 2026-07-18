@@ -10,15 +10,15 @@ The app has two deployment paths. **EC2 is the primary production target.**
 ## EC2 Deployment (primary)
 
 Runs on an EC2 Ubuntu instance behind nginx with Let's Encrypt TLS.
-Documents are read from the filesystem at
-`~/.hermes/skills/ontario-land-use-feasibility/documents`.
+Documents are read from the repo-vendored `skill/documents/` tree
+(gitignored, synced via `make ec2-deploy` / `make ec2-sync-docs`).
 
 ### Prerequisites
 
 - The SSH key `staff-gnarly-woof-ssh.pem` in the repo root (gitignored).
 - The EC2 security group allows inbound **22** (SSH), **80** + **443** (nginx).
   The app port (3000) is **not** exposed publicly — nginx proxies to it.
-- Local skill documents at `~/.hermes/skills/ontario-land-use-feasibility/`
+- Local skill documents at `skill/documents/` (gitignored; synced via rsync)
   (produced by `make convert-docs` → `make copy-converted-docs` →
   `make split-docs`).
 

@@ -12,7 +12,7 @@ Usage:
     uv run --with marko scripts/split_markdown.py [DOCS_DIR]
 
 Defaults:
-    DOCS_DIR = ~/.hermes/skills/ontario-land-use-feasibility/documents
+    DOCS_DIR = <repo>/skill/documents
 
 Algorithm:
     1. Parse each .md file with marko to find all headings (level + clean text).
@@ -543,8 +543,8 @@ def main():
     if args.docs_dir:
         docs_dir = Path(args.docs_dir).resolve()
     else:
-        skill_dir = Path.home() / ".hermes" / "skills" / "ontario-land-use-feasibility"
-        docs_dir = skill_dir / "documents"
+        repo_root = Path(__file__).resolve().parent.parent
+        docs_dir = repo_root / "skill" / "documents"
 
     if not docs_dir.exists():
         print(f"ERROR: Documents directory not found: {docs_dir}")

@@ -1,17 +1,21 @@
 // ─── Filesystem document service ────────────────────────────────────────
 //
-// Planning documents are stored as Markdown files on the filesystem at
-// ~/.hermes/skills/ontario-land-use-feasibility/documents (override via
-// LAND_USE_DOCS_DIR). Large documents are split into section files with
-// per-document _index.md files and a top-level sections-index.md so the
-// agent can navigate without loading entire documents.
+// Planning documents are stored as Markdown files on the filesystem under
+// the repo-vendored skill directory at <repo>/skill/documents (override the
+// skill root via LAND_USE_SKILL_DIR, or just the documents dir via
+// LAND_USE_DOCS_DIR). The skill scaffolding (SKILL.md, templates/,
+// references/) lives at <repo>/skill/ and is tracked in git; the documents/
+// tree is gitignored and synced to EC2 via rsync during deploy. Large
+// documents are split into section files with per-document _index.md files
+// and a top-level sections-index.md so the agent can navigate without
+// loading entire documents.
 //
 // Reads are synchronous and cached in-memory for the process lifetime
 // (no TTL — restart the process to pick up document updates).
 
 import fs from "node:fs";
 import path from "node:path";
-import os from "node:os";
+import { fileURLToPath } from "node:url";
 
 // -- Configuration ---------------------------------------------------------
 const MAX_CHARS = 50_000;
@@ -22,18 +26,50 @@ const docCache = new Map<string, string>();
 let searchIndexCache: Map<string, string> | null = null;
 
 // -- Filesystem helpers ----------------------------------------------------
-function getDocsDir(): string {
-  const skillDir = path.join(
-    os.homedir(),
-    ".hermes/skills/ontario-land-use-feasibility",
-  );
-  return process.env.LAND_USE_DOCS_DIR
-    ? path.resolve(process.env.LAND_USE_DOCS_DIR)
-    : path.join(skillDir, "documents");
+
+/**
+ * Resolve the repo root by walking up from this module's location looking for
+ * the vendored `skill/` directory. Falls back to `process.cwd()` (which is
+ * the repo root in both dev (`bun dev`) and production — the systemd unit sets
+ * `WorkingDirectory=/opt/ontario-land-use-chat`). This is robust to the
+ * built server bundle's location under the repo.
+ */
+function findRepoRoot(): string {
+  try {
+    let dir = path.dirname(fileURLToPath(import.meta.url));
+    for (let i = 0; i < 12; i++) {
+      if (fs.existsSync(path.join(dir, "skill"))) return dir;
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  } catch {
+    // import.meta.url unavailable — fall through to cwd
+  }
+  return process.cwd();
 }
 
+const REPO_ROOT = findRepoRoot();
+
+/**
+ * The vendored skill directory: <repo>/skill/ by default, or
+ * `LAND_USE_SKILL_DIR` if set. Contains SKILL.md, templates/, references/,
+ * and documents/.
+ */
 function getSkillDir(): string {
-  return path.join(os.homedir(), ".hermes/skills/ontario-land-use-feasibility");
+  return process.env.LAND_USE_SKILL_DIR
+    ? path.resolve(process.env.LAND_USE_SKILL_DIR)
+    : path.join(REPO_ROOT, "skill");
+}
+
+/**
+ * The planning documents directory: <skillDir>/documents/ by default, or
+ * `LAND_USE_DOCS_DIR` if set (independent of the skill root).
+ */
+function getDocsDir(): string {
+  return process.env.LAND_USE_DOCS_DIR
+    ? path.resolve(process.env.LAND_USE_DOCS_DIR)
+    : path.join(getSkillDir(), "documents");
 }
 
 function resolveSafe(relPath: string): string {
