@@ -198,7 +198,8 @@ ec2-setup:
 ec2-deploy: ec2-push-systemd
 	@echo ">>> Syncing skill documents to $(EC2_HOST):$(EC2_APP_DIR)/skill/documents/…"
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'mkdir -p $(EC2_APP_DIR)/skill/documents'
-	$(RSYNC) --delete \
+	$(RSYNC) --delete --delete-excluded \
+	  --exclude='*.pdf' --exclude='*.html' --exclude='.DS_Store' \
 	  $(SKILL_DIR)/documents/ \
 	  $(EC2_USER)@$(EC2_HOST):$(EC2_APP_DIR)/skill/documents/
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'cd $(EC2_APP_DIR) && bash deploy/scripts/ec2-deploy.sh'
@@ -223,7 +224,8 @@ ec2-push-nginx:
 # in `make ec2-deploy`; this target is for document-only updates.
 ec2-sync-docs:
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'mkdir -p $(EC2_APP_DIR)/skill/documents'
-	$(RSYNC) --delete \
+	$(RSYNC) --delete --delete-excluded \
+	  --exclude='*.pdf' --exclude='*.html' --exclude='.DS_Store' \
 	  $(SKILL_DIR)/documents/ \
 	  $(EC2_USER)@$(EC2_HOST):$(EC2_APP_DIR)/skill/documents/
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo systemctl restart ontario-land-use-chat'
