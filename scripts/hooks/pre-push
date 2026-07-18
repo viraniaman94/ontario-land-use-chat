@@ -1,13 +1,11 @@
 #!/usr/bin/env bash
-# pre-push: deploy to EC2 before pushing to GitHub.
-# If the deploy fails, the push is aborted.
+# pre-push: reminder to deploy to EC2 after the push lands.
+#
+# There is no native git "post-push" hook, and deploying *before* the push
+# is wrong for EC2 (the deploy pulls from origin, which doesn't have the
+# new commit until after the push). So this hook just nudges you to run
+# `make ec2-deploy` once the push succeeds. It never blocks the push.
 set -euo pipefail
 
-echo "▸ pre-push: deploying to EC2…"
-
-if ! make ec2-deploy; then
-  echo "✗ EC2 deploy failed — push aborted." >&2
-  exit 1
-fi
-
-echo "✓ EC2 deploy succeeded — proceeding with push."
+echo "▸ Push will land on origin. After it succeeds, deploy to EC2 with:"
+echo "    make ec2-deploy"
