@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# pre-push: publish to Cloudflare before pushing to GitHub.
+# pre-push: deploy to EC2 before pushing to GitHub.
 # If the deploy fails, the push is aborted.
 set -euo pipefail
 
-echo "▸ pre-push: deploying to Cloudflare Workers…"
+echo "▸ pre-push: deploying to EC2…"
 
-if ! bun run cf:deploy; then
-  echo "✗ Cloudflare deploy failed — push aborted." >&2
+if ! make ec2-deploy; then
+  echo "✗ EC2 deploy failed — push aborted." >&2
   exit 1
 fi
 
-echo "✓ Cloudflare deploy succeeded — proceeding with push."
+echo "✓ EC2 deploy succeeded — proceeding with push."

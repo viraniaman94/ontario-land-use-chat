@@ -1,8 +1,10 @@
 # Ontario Land Use Planning Chat — deployment helpers.
 #
-# Most of these wrap the manual steps in Task 9 of the implementation
-# plan. The interactive Cloudflare steps (login, tunnel create, DNS route)
-# must be run by hand once; everything after that is automatable.
+# Primary deployment target: EC2 (systemd + nginx + Let's Encrypt).
+# See deploy/README.md → "EC2 Deployment" for the full guide.
+#
+# The Mac launchd + Cloudflare quick-tunnel targets below are retained
+# only for local always-on dev on this Mac. Production runs on EC2.
 
 SHELL := /bin/bash
 APP_DIR := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))
@@ -13,6 +15,18 @@ PORT ?= 3001
 TUNNEL_NAME ?= ontario-land-use-chat
 LAUNCH_AGENT_APP := ~/Library/LaunchAgents/com.user.ontario-land-use-chat.plist
 LAUNCH_AGENT_TUN := ~/Library/LaunchAgents/com.user.cloudflare-tunnel-chat.plist
+
+# --- EC2 deployment (primary production target) ---
+# The app runs on an EC2 Ubuntu instance via systemd + nginx + Let's Encrypt.
+# The SSH key (staff-gnarly-woof-ssh.pem) lives in the repo root (gitignored).
+EC2_HOST ?= ec2-18-222-140-19.us-east-2.compute.amazonaws.com
+EC2_USER ?= ubuntu
+EC2_KEY  ?= staff-gnarly-woof-ssh.pem
+EC2_APP_DIR ?= /opt/ontario-land-use-chat
+EC2_PORT ?= 3000
+SSH := ssh -i $(EC2_KEY) -o StrictHostKeyChecking=accept-new
+SCP := scp -i $(EC2_KEY)
+RSYNC := rsync -avz --progress -e "ssh -i $(EC2_KEY)"
 
 .PHONY: install dev build start prod start-prod \
         tunnel-login tunnel-create tunnel-route-dns tunnel-run tunnel-list \
@@ -40,7 +54,9 @@ start:
 
 start-prod: build start
 
-# --- Cloudflare tunnel one-time setup (manual / interactive) ---
+# --- Cloudflare tunnel (legacy: Mac local dev only) ---
+# These targets drive a cloudflared quick tunnel for local Mac exposure.
+# Production runs on EC2 behind nginx + Let's Encrypt — see the ec2-* targets.
 
 tunnel-login:
 	$(CLOUDFLARED) tunnel login
@@ -59,7 +75,7 @@ tunnel-run:
 tunnel-list:
 	$(CLOUDFLARED) tunnel list
 
-# --- launchd persistence ---
+# --- launchd persistence (legacy: Mac local dev only) ---
 
 launch-app-load:
 	launchctl unload $(LAUNCH_AGENT_APP) 2>/dev/null || true
@@ -153,3 +169,69 @@ SPLIT_SCRIPT := $(APP_DIR)/scripts/split_markdown.py
 
 split-docs:
 	uv run --with marko $(SPLIT_SCRIPT)
+
+# ===================================================================
+# EC2 deployment (primary production)
+# ===================================================================
+# See deploy/README.md → "EC2 Deployment" for the full guide.
+# The Cloudflare Workers + Mac/launchd paths below this remain as fallbacks.
+
+.PHONY: ec2-ssh ec2-setup ec2-deploy ec2-logs ec2-status \
+        ec2-restart ec2-stop ec2-sync-docs ec2-push-systemd ec2-push-nginx
+
+# Interactive SSH shell on the EC2 instance.
+ec2-ssh:
+	$(SSH) $(EC2_USER)@$(EC2_HOST)
+
+# One-time provisioning: install Node, Bun, nginx, ufw; clone repo; firewall.
+# Safe to re-run (idempotent-ish). Run once when bringing up a new instance.
+ec2-setup:
+	@echo ">>> Provisioning EC2 instance $(EC2_HOST)…"
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'bash -s' < deploy/scripts/ec2-setup.sh
+	@echo ">>> EC2 setup complete. Next: make ec2-sync-docs && make ec2-deploy"
+
+# Deploy/update the app: git pull → bun install → build → restart service.
+# Pushes the latest deploy scripts first, then runs ec2-deploy.sh on EC2.
+ec2-deploy: ec2-push-systemd
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'cd $(EC2_APP_DIR) && bash deploy/scripts/ec2-deploy.sh'
+
+# Install/refresh the systemd unit file on EC2 (does not start it).
+ec2-push-systemd:
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo mkdir -p /etc/systemd/system && sudo tee /etc/systemd/system/ontario-land-use-chat.service >/dev/null' \
+		< deploy/systemd/ontario-land-use-chat.service
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo systemctl daemon-reload'
+	@echo "systemd unit installed. Enable with: sudo systemctl enable --now ontario-land-use-chat"
+
+# Install/refresh the nginx site config on EC2.
+ec2-push-nginx:
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo mkdir -p /etc/nginx/sites-available /etc/nginx/sites-enabled && sudo tee /etc/nginx/sites-available/ontario-land-use-chat.conf >/dev/null' \
+		< deploy/nginx/ontario-land-use-chat.conf
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo ln -sf /etc/nginx/sites-available/ontario-land-use-chat.conf /etc/nginx/sites-enabled/ontario-land-use-chat.conf && sudo rm -f /etc/nginx/sites-enabled/default && sudo nginx -t && sudo systemctl reload nginx'
+	@echo "nginx config installed + reloaded. Run certbot next: sudo certbot --nginx -d $(EC2_HOST)"
+
+# Sync the skill documents directory (documents/ + SKILL.md + templates/)
+# from the local Mac to EC2. Restart the service AFTERWARDS to clear the
+# in-memory document cache (no TTL).
+ec2-sync-docs:
+	$(RSYNC) \
+	  ~/.hermes/skills/ontario-land-use-feasibility/ \
+	  $(EC2_USER)@$(EC2_HOST):~/.hermes/skills/ontario-land-use-feasibility/
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo systemctl restart ontario-land-use-chat'
+	@echo "Docs synced + service restarted (cache cleared)."
+
+# Tail the app logs (journald) on EC2.
+ec2-logs:
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'journalctl -u ontario-land-use-chat --no-pager -n 100 -f'
+
+# Show service status + a local health check from EC2.
+ec2-status:
+	$(SSH) $(EC2_USER)@$(EC2_HOST) \
+	  'systemctl status ontario-land-use-chat --no-pager 2>/dev/null | head -15; echo "---"; curl -s -o /dev/null -w "local http://localhost:$(EC2_PORT)/login: HTTP %{http_code}\n" http://localhost:$(EC2_PORT)/login || echo "local server not responding"'
+
+# Restart the app service on EC2 (also clears the in-memory doc cache).
+ec2-restart:
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo systemctl restart ontario-land-use-chat'
+
+# Stop the app service on EC2.
+ec2-stop:
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo systemctl stop ontario-land-use-chat'

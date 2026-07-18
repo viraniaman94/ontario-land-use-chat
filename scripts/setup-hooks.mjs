@@ -20,4 +20,4 @@ for (const hook of hooks) {
 
 console.log("✓ Installed git hooks:");
 console.log(`  ${join(hooksDir, "pre-commit")}  (AGENTS.md size guard)`);
-console.log(`  ${join(hooksDir, "pre-push")}     (Cloudflare deploy before push)`);
+console.log(`  ${join(hooksDir, "pre-push")}     (EC2 deploy before push)`);

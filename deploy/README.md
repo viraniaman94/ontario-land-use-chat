@@ -1,67 +1,134 @@
-# Deployment artifacts
+# Deployment
 
-These scripts deploy the app natively on this Mac (M2 Max, always-on) and
-expose it publicly through a Cloudflare Tunnel.
+The app has two deployment paths. **EC2 is the primary production target.**
 
-## Files
+| Path | Status | Runtime | TLS | Docs |
+|------|--------|---------|-----|------|
+| **EC2** (systemd + nginx) | ✅ Primary | Node.js (`react-router-serve`) | Let's Encrypt (certbot) | Filesystem |
+| Mac launchd + quick tunnel | Legacy (local dev) | Node.js | Cloudflare tunnel | Filesystem |
 
-- `../Makefile` — `make` targets wrapping the manual steps below.
-- `launchd/com.user.ontario-land-use-chat.plist` — keeps `bun run start`
-  alive on port 3001 across reboots. Install to `~/Library/LaunchAgents/`.
-- `launchd/com.user.cloudflare-tunnel-chat.plist` — keeps `cloudflared
-  tunnel run` alive across reboots. Install to `~/Library/LaunchAgents/`.
+## EC2 Deployment (primary)
 
-The API key is **not** stored in the plist — Next.js reads `OLLAMA_API_KEY`
-from `.env.local` at runtime, so the plist stays secret-free.
+Runs on an EC2 Ubuntu instance behind nginx with Let's Encrypt TLS.
+Documents are read from the filesystem at
+`~/.hermes/skills/ontario-land-use-feasibility/documents`.
 
-> ⚠️ **Quick tunnels are dev-only.** `cloudflared tunnel --url
-> http://localhost:3001` gives a random `trycloudflare.com` subdomain with
-> no Cloudflare account. Per Cloudflare's docs they have a **200
-> concurrent-request limit, no uptime guarantee, and officially do not
-> support Server-Sent Events (SSE)**. Our `/api/chat` streams the LLM
-> response as SSE (`createUIMessageStreamResponse`). In practice we observed
-> SSE streaming working fine through a quick tunnel for single-user dev
-> testing (reasoning + text deltas + `[DONE]` all arrived intact) — so it's
-> fine for trying the app, but don't rely on it under load. For shared or
-> long-lived use, use the **named** tunnel below (SSE fully supported, no
-> concurrent request cap).
->
-> To test the full app without Cloudflare, just hit the Mac directly:
-> `http://localhost:3001` (same machine) or
-> `http://192.168.2.15:3001` (any device on your LAN). No tunnel needed.
+### Prerequisites
 
-## One-time Cloudflare setup (interactive, run by hand)
+- The SSH key `staff-gnarly-woof-ssh.pem` in the repo root (gitignored).
+- The EC2 security group allows inbound **22** (SSH), **80** + **443** (nginx).
+  The app port (3000) is **not** exposed publicly — nginx proxies to it.
+- Local skill documents at `~/.hermes/skills/ontario-land-use-feasibility/`
+  (produced by `make convert-docs` → `make copy-converted-docs` →
+  `make split-docs`).
+
+### One-time setup (from local Mac)
 
 ```bash
-make tunnel-login                                    # browser auth, writes ~/.cloudflared/cert.pem
-make tunnel-create                                   # writes ~/.cloudflared/<UUID>.json
-make tunnel-route-dns HOSTNAME=chat.yourdomain.com   # creates the DNS CNAME
+make ec2-setup       # installs Node 22, Bun, nginx, ufw; clones repo; firewall
+make ec2-sync-docs   # rsync documents/ + SKILL.md + templates/ to EC2
 ```
 
-Then create `~/.cloudflared/config.yml` (replace UUID + hostname):
-
-```yaml
-tunnel: <TUNNEL_UUID>
-credentials-file: /Users/amanv/.cloudflared/<TUNNEL_UUID>.json
-ingress:
-  - hostname: chat.yourdomain.com
-    service: http://localhost:3001
-  - service: http_status:404
-```
-
-## Run + persist
+### Configure secrets + build (on EC2)
 
 ```bash
-# Install the plists into ~/Library/LaunchAgents/ (cp from deploy/launchd/)
+make ec2-ssh         # or: ssh -i staff-gnarly-woof-ssh.pem ubuntu@<host>
+```
+
+On EC2:
+
+```bash
+cd /opt/ontario-land-use-chat
+
+# 1. Create .env (chmod 600)
+openssl rand -base64 48   # → SESSION_SECRET
+cat > .env <<EOF
+DATABASE_URL=postgresql://...
+OLLAMA_API_KEY=...
+SESSION_SECRET=<paste above>
+NODE_ENV=production
+PORT=3000
+EOF
+chmod 600 .env
+
+# 2. Build + start
+bun run build
+sudo systemctl enable --now ontario-land-use-chat
+curl -s -o /dev/null -w "%{http_code}\n" http://localhost:3000/login   # → 200
+
+# 3. TLS via Let's Encrypt
+sudo apt-get install -y certbot python3-certbot-nginx
+sudo certbot --nginx -d ontariochat.duckdns.org
+```
+
+### Day-to-day deploys (from local Mac)
+
+```bash
+make ec2-deploy      # git pull → bun install → build → systemctl restart
+make ec2-status      # service status + health check
+make ec2-logs        # tail journald
+make ec2-restart     # restart (also clears the in-memory doc cache)
+```
+
+### Updating planning documents
+
+```bash
+# Locally:
+make convert-docs && make copy-converted-docs && make split-docs
+# Then push to EC2:
+make ec2-sync-docs   # rsync + restart (restart clears the doc cache)
+```
+
+> The document service caches documents in-memory with no TTL. A service
+> restart is required after updating docs — `make ec2-sync-docs` does this
+> automatically.
+
+### Files
+
+| File | Purpose |
+|------|---------|
+| `systemd/ontario-land-use-chat.service` | systemd unit (replaces launchd plist) |
+| `nginx/ontario-land-use-chat.conf` | nginx reverse proxy (SSE-aware, 300s timeout) |
+| `scripts/ec2-setup.sh` | one-time provisioning script |
+| `scripts/ec2-deploy.sh` | deploy/update script |
+
+### Why `node` not `bun run start` in the systemd unit
+
+`bun run start` spawns a child server then the bun parent exits (exit
+code 1), which confuses process supervisors. The systemd unit invokes
+`node node_modules/.bin/react-router-serve` directly so the process
+stays in the foreground and systemd can track its PID and restart on
+crash. (Same workaround the Mac launchd plist uses.)
+
+### SSE through nginx
+
+`/api/chat` streams the LLM response as SSE. The nginx config sets
+`proxy_buffering off`, `proxy_cache off`, and a 300s read/send timeout so
+tokens flush to the browser immediately and long responses don't time
+out.
+
+### TLS and the `secure` cookie flag
+
+`session.ts` sets the session cookie `Secure` flag when
+`NODE_ENV=production`. Without TLS the browser refuses to set the cookie
+and auth silently fails. **TLS (certbot) is mandatory for production.**
+
+---
+
+## Mac launchd (legacy, local dev only)
+
+Kept for local always-on dev on the Mac. Not used for production.
+
+- `launchd/com.user.ontario-land-use-chat.plist` — `react-router-serve`
+  on port 3001 (avoids the Hermes gateway on 3000).
+- `launchd/com.user.cloudflare-tunnel-chat.plist` — cloudflared quick tunnel.
+
+```bash
 cp deploy/launchd/*.plist ~/Library/LaunchAgents/
-
-# Load both agents (app server + tunnel)
-make launch-load
-
-# Verify
-make status
-curl -s https://chat.yourdomain.com | head -20
+make launch-load    # load both agents
+make launch-unload  # stop both
 ```
 
-`make launch-unload` stops both. Logs land in `.next/server.log` and
-`/tmp/cloudflared-chat.log` (`make logs`, `make logs-tun`).
+> ⚠️ Quick tunnels are dev-only (random `trycloudflare.com` URL, 200
+> concurrent-request cap, no official SSE support). Use the EC2 path for
+> production.

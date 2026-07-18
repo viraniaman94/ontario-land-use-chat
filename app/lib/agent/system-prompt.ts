@@ -11,8 +11,8 @@ import { listDocuments, readSkillFile } from "./document-service";
  *  - Feasibility report template
  *  - 10 critical rules the agent must follow
  *
- * This function is async because document/skill files may be stored in
- * R2 (Cloudflare Workers) or on the filesystem (Node.js dev).
+ * This function is async because document/skill files are read from the
+ * filesystem at runtime.
  */
 export async function buildSystemPrompt(): Promise<string> {
   const [skillMd, reportTemplate, documentIndex] = await Promise.all([

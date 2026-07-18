@@ -1,0 +1,43 @@
+[Unit]
+Description=Ontario Land Use Planning Chat
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/opt/ontario-land-use-chat
+
+# Load secrets from .env (DATABASE_URL, OLLAMA_API_KEY, SESSION_SECRET, …)
+EnvironmentFile=/opt/ontario-land-use-chat/.env
+
+# Hardcode runtime vars (do not put these in .env so they can't be overridden
+# by a stale value copied from a dev machine).
+Environment=NODE_ENV=production
+Environment=PORT=3000
+
+# Invoke react-router-serve directly via node — NOT `bun run start`.
+# `bun run start` spawns a child server and then the bun parent exits
+# (exit code 1), which confuses systemd's Restart=on-failure (same issue
+# the launchd plist on Mac works around). Running node directly keeps the
+# process in the foreground so systemd can track its PID and restart it.
+ExecStart=/usr/bin/node node_modules/.bin/react-router-serve ./build/server/index.js
+
+Restart=on-failure
+RestartSec=5
+
+# Journald captures stdout/stderr — view with:
+#   journalctl -u ontario-land-use-chat -f
+StandardOutput=journal
+StandardError=journal
+
+# Hardening
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=read-only
+ReadWritePaths=/opt/ontario-land-use-chat
+
+[Install]
+WantedBy=multi-user.target

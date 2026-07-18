@@ -52,6 +52,8 @@ yarn-error.log*
 pi-response-formatting-guide.md
 .pi-subagents/
 .dev.vars
+# SSH keys
+*.pem
 # Cloudflare
 er-configuration.d.ts
 .wrangler/

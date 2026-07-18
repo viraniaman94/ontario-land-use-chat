@@ -4,8 +4,8 @@ import { neon } from "@neondatabase/serverless";
  * Neon Postgres database client.
  *
  * Uses @neondatabase/serverless which communicates with Neon over HTTP,
- * making it ideal for serverless / edge runtimes (including Cloudflare
- * Workers). The connection string is read from the DATABASE_URL env var.
+ * making it ideal for serverless runtimes. The connection string is read
+ * from the DATABASE_URL env var.
  */
 
 const connectionString = process.env.DATABASE_URL;

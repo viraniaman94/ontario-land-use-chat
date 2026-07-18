@@ -4,8 +4,8 @@ import { isbot } from "isbot";
 import { renderToReadableStream } from "react-dom/server";
 
 /**
- * Custom SSR entry server for Cloudflare Workers.
- * Uses renderToReadableStream (Web Streams) instead of Node.js streams.
+ * Custom SSR entry server. Uses renderToReadableStream (Web Streams),
+ * which is supported in Node.js 18+ as well as edge runtimes.
  * Includes error details in the response for debugging.
  */
 

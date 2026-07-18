@@ -44,47 +44,41 @@ gitignored. No external deps (system `sqlite3`).
   (`OLLAMA_API_KEY`, base URL `https://ollama.com/v1`)
 - **Neon Postgres** (`@neondatabase/serverless` — HTTP-based, serverless-friendly)
   for persistent conversation and message storage
-- **Cloudflare Workers** + **R2** for production; **Node.js** + filesystem for
-  local dev (toggled by `CLOUDFLARE=1` env var)
+- **EC2 Ubuntu** (systemd + nginx + Let's Encrypt) for production.
+  Documents are read from the filesystem; no R2/Workers involved.
 - **Tailwind v4** + **shadcn/ui** (`base-nova` style) on **`@base-ui/react`**
   primitives (NOT Radix); **react-markdown** + **remark-gfm** +
   **rehype-highlight** for rendering assistant messages
-- **pdf-parse v2** for PDF text extraction (legacy fallback; Marker-converted
-  Markdown preferred)
 
 ## Project Layout
 
 ```
 app/
-  root.tsx                       Root layout (HTML shell, TooltipProvider, r2StorageMiddleware)
+  root.tsx                       Root layout (HTML shell, TooltipProvider)
   routes.ts                      Flat file route config (flatRoutes from @react-router/fs-routes)
-  entry.server.tsx               Custom SSR entry (Web Streams for Cloudflare Workers compat)
+  entry.server.tsx               Custom SSR entry (Web Streams, Node 18+ compatible)
   globals.css                    Tailwind v4 + custom pi-* theme classes
   routes/
     _auth.tsx                    Pathless layout: authMiddleware guard + DB schema init
     _auth._index.tsx             Home page: sidebar + chat, conversation CRUD (optimistic UI)
-    login.tsx                    Password login page (public, no auth)
-    logout.tsx                   Logout resource route (GET + POST)
-    api.chat.ts                  Streaming chat endpoint (POST, SSE, maxDuration 300)
-    api.conversations.ts         GET list / POST create conversations
-    api.conversations.$id.ts     GET / PUT / DELETE conversation + messages
+    login.tsx / logout.tsx       Password login page / logout resource route (GET + POST)
+    api.chat.ts                  Streaming chat endpoint (POST, SSE)
+    api.conversations.ts*        GET/POST/PUT/DELETE conversations + messages
   auth/
     session.ts                   Cookie session storage, password check, auth helpers
-    middleware.ts                v8 middleware: authMiddleware, apiAuthMiddleware, r2StorageMiddleware
+    middleware.ts                v8 middleware: authMiddleware, apiAuthMiddleware
   db/
     client.ts                    Neon client, conversation/message CRUD, ensureSchema()
     schema.sql                   Database schema (conversations + messages, indexes)
-  components/
-    chat/                        Chat UI (see below)
-    ui/                          13 vendored shadcn/ui primitives (base-ui based)
+  components/                    chat/ (see below) + ui/ (vendored shadcn/ui, base-ui)
   hooks/
-    use-conversations.ts          ConversationMeta type only (CRUD moved to route layer)
-    use-stream-status.ts        Consolidated chat stream status (idle/waiting/streaming/stopped/error/complete) + stall timeout
+    use-conversations.ts         ConversationMeta type only (CRUD moved to route layer)
+    use-stream-status.ts         Chat stream status + stall timeout
     use-mobile.ts                Viewport breakpoint hook (768px)
   lib/
     ai-provider.ts               Ollama Cloud provider + MODEL_ID ("deepseek-v4-pro")
     agent/
-      document-service.ts        Document read/list/search, R2 + filesystem dual-mode, cache
+      document-service.ts        Document read/list/search (filesystem), cache
       tools.ts                   AI SDK tool defs: readDocument, listDocuments, searchDocuments
       system-prompt.ts           Builds system prompt (SKILL.md + sections index + template + 10 rules)
     utils.ts                     cn() helper
@@ -92,26 +86,20 @@ scripts/
   convert_pdfs.py                Marker + LLM PDF→Markdown converter; writes ./converted-docs/*.md
   split_markdown.py              Splits .md docs into section files with _index.md + sections-index.md
   setup-db.mjs                   Creates Neon Postgres schema from app/db/schema.sql
-  upload-to-r2.mjs               Differential upload of skill docs to Cloudflare R2 bucket
-  convert-report.{json,csv}      Quality report from last conversion run
-  requirements.txt              Pins marker-pdf version (installed via uvx, not project deps)
-  kanban-schema.sql             SQLite kanban board schema (tasks + task_activity + board_meta)
+  kanban / kanban-schema.sql     SQLite kanban board CLI + schema (tasks + task_activity + board_meta)
   kanban-init.sh                 (Re)create tasks/kanban.db from kanban-schema.sql
-  kanban                         CLI wrapper for the kanban board (list/add/move/edit/...)
-tasks/
-  kanban.db                      Local SQLite kanban board (tracked); sidecars gitignored
+tasks/kanban.db                  Local SQLite kanban board (tracked); sidecars gitignored
 .agents/skills/kanban/SKILL.md   Kanban agent skill — command reference for scripts/kanban
-workers/
-  app.ts                         Cloudflare Workers entry: env→process.env bridge, R2 globalThis wiring
 deploy/
-  launchd/*.plist                launchd agents (React Router serve + Cloudflare tunnel)
-  scripts/start-tunnel.sh         Quick Cloudflare tunnel launcher
-Makefile                         install/dev/build/prod, tunnel, launchd, convert-docs, split-docs
-vite.config.ts                   Vite config (conditional @cloudflare/vite-plugin, env injection)
+  systemd/ontario-land-use-chat.service  systemd unit for the Node.js app (EC2 production)
+  nginx/ontario-land-use-chat.conf       nginx reverse proxy (SSE-aware, TLS via certbot)
+  scripts/ec2-setup.sh                    One-time EC2 provisioning (Node, Bun, nginx, ufw, clone)
+  scripts/ec2-deploy.sh                   EC2 deploy/update (git pull → build → restart)
+  launchd/*.plist                         Legacy: Mac launchd agents (local dev only)
+Makefile                         install/dev/build/prod, tunnel, launchd, ec2-*, convert-docs, split-docs
+vite.config.ts                   Vite config (loadEnv env injection)
 react-router.config.ts           React Router config (ssr: true)
-wrangler.jsonc                   Cloudflare Workers config (R2 binding, nodejs_compat, observability)
 tsconfig.json                    TS config (strict, ~/* and @/* → ./app/*)
-components.json                  shadcn/ui config (base-nova style, base-ui primitives)
 converted-docs/                  Marker-converted Markdown docs (gitignored)
 ```
 
@@ -124,10 +112,6 @@ owns `useChat`) → `ChatHeader`, `ChatMessages` (auto-scroll, empty state,
 separators; `ChatMessage` for user bubbles), `ChatInput` (textarea +
 send/stop), `StreamStatusBar` (always-on stream-state line: dot + label +
 elapsed timer, rendered above the input).
-
-### Vendored shadcn/ui Components (13)
-
-`avatar`, `bubble` (custom, not from registry), `button`, `card`, `input`, `scroll-area`, `separator`, `sheet`, `sidebar` (722 lines — the largest), `skeleton`, `sonner`, `textarea`, `tooltip`. All based on `@base-ui/react` primitives (not Radix UI).
 
 ## How the Agent Works
 
@@ -166,24 +150,19 @@ documents/
 ```
 
 The agent navigates without loading entire large documents:
-1. `listDocuments()` → top-level `sections-index.md` (which docs exist)
-2. `readDocument("provincial/pps-2024/_index.md")` → section list w/ summaries
-3. `readDocument("provincial/pps-2024/06-22-housing.md")` → specific section
+`listDocuments()` → `sections-index.md`, then `readDocument("<doc>/_index.md")`
+→ `readDocument("<doc>/<section>.md")`.
 
-### Dual-Mode Document Storage
+### Document Storage
 
-- **R2 mode (Cloudflare Workers):** `setDocumentStorage(bucket)` is called from
-  `r2StorageMiddleware` (root), wired via `globalThis.__R2_BUCKET` in
-  `workers/app.ts`. Document keys are prefixed `documents/`.
-- **Filesystem mode (local dev):** fallback when no R2 bucket set. Reads from
-  `LAND_USE_DOCS_DIR` or default
-  `~/.hermes/skills/ontario-land-use-feasibility/documents`. `resolveSafe()`
-  guards path traversal; Node built-ins (`fs`,`path`,`os`) loaded via lazy
-  `eval("require")` to avoid bundler issues.
+Documents are read from the filesystem at `LAND_USE_DOCS_DIR` or the default
+`~/.hermes/skills/ontario-land-use-feasibility/documents`. `resolveSafe()`
+guards path traversal; Node built-ins (`fs`,`path`,`os`) loaded via lazy
+`eval("require")` to avoid bundler issues. On EC2, docs are synced from a
+local Mac via `make ec2-sync-docs` (rsync).
 
-In-memory caches (`docCache`, `searchIndexCache`) persist for the process/isolate
-lifetime with no TTL.
-
+In-memory caches (`docCache`, `searchIndexCache`) persist for the process
+lifetime with no TTL — restart the service to pick up doc updates.
 ### PDF → Markdown → Split Section Files Pipeline
 
 1. **Convert:** `make convert-docs` → `scripts/convert_pdfs.py` (Marker + LLM,
@@ -191,8 +170,8 @@ lifetime with no TTL.
 2. **Copy:** `make copy-converted-docs` → skill `documents/` dir
 3. **Split:** `make split-docs` → `split_markdown.py` → section files +
    `_index.md` per doc + top-level `sections-index.md`
-4. **Upload to R2:** `bun run r2:upload` → `scripts/upload-to-r2.mjs`
-   (differential upload to bucket `ontario-land-use-docs`)
+4. **Sync to EC2:** `make ec2-sync-docs` → rsync the skill dir to the EC2
+   instance + restart the service (clears the in-memory doc cache).
 
 ## Authentication
 
@@ -208,8 +187,6 @@ Auth enforced via React Router v8 middleware:
   applied to `_auth.tsx` pathless layout.
 - **`apiAuthMiddleware`** (API routes) — 401 JSON if unauthenticated; applied to
   all `api.*` routes.
-- **`r2StorageMiddleware`** (root) — wires R2 bucket into document service every
-  request.
 
 Session is a signed cookie (`createCookieSessionStorage`), `httpOnly: true`,
 `sameSite: "lax"`, `secure` in production.
@@ -239,9 +216,8 @@ Session is a signed cookie (`createCookieSessionStorage`), `httpOnly: true`,
 | `SESSION_SECRET` | no | (dev default) | Cookie signing secret (32+ chars) |
 | `LAND_USE_DOCS_DIR` | no | skill `documents/` | Override filesystem docs directory |
 
-For Cloudflare Workers: `DATABASE_URL`, `OLLAMA_API_KEY`, `SESSION_SECRET` are
-set via `wrangler secret put`; `OLLAMA_BASE_URL` and `APP_PASSWORD` are
-`wrangler.jsonc` vars. R2 binding `DOCUMENTS` → bucket `ontario-land-use-docs`.
+On EC2, all env vars live in `/opt/ontario-land-use-chat/.env` (loaded by the
+systemd unit's `EnvironmentFile` and by `vite.config.ts` `loadEnv` at build time).
 
 ## Commands
 
@@ -256,14 +232,12 @@ make split-docs           # split .md docs into section files + indexes
 bun run db:setup          # create Neon Postgres schema
 bun run typecheck         # react-router typegen && tsc --noEmit
 ./scripts/kanban-init.sh  # (re)create the local SQLite kanban board (tasks/kanban.db)
+bun run setup:hooks       # (re)install git hooks (pre-commit size guard + pre-push EC2 deploy)
 
-# Cloudflare Workers mode
-bun run cf:dev            # CLOUDFLARE=1 react-router dev (workerd runtime)
-bun run cf:build          # CLOUDFLARE=1 react-router build
-bun run cf:deploy         # build + wrangler deploy
-bun run cf:tail           # wrangler tail (live logs)
-bun run r2:upload         # upload docs to R2 bucket
-bun run setup:hooks       # (re)install git hooks (pre-commit size guard + pre-push deploy)
+make ec2-setup       # one-time: install Node, Bun, nginx, ufw, clone repo
+make ec2-sync-docs   # rsync skill docs to EC2 + restart (clears doc cache)
+make ec2-deploy      # git pull → bun install → build → systemctl restart
+make ec2-status      # service status + health check   (also: ec2-logs, ec2-restart, ec2-ssh)
 ```
 
 Dev server runs on **port 5173** (Vite default). Production server defaults to
@@ -282,15 +256,13 @@ Hermes gateway on 3000).
   messages are posted.
 - **Path aliases:** `~/*` and `@/*` both → `./app/*` (see `tsconfig.json`).
   `@/*` is used by shadcn/ui; `~/*` is React Router convention.
-- **Conversations persist to Neon Postgres**, not localStorage. All persistence
-  goes through API resource routes (`/api/conversations*`).
-- **Optimistic UI:** the home route (`_auth._index.tsx`) updates local state
-  immediately, then persists asynchronously via fetch calls.
-- **Dual-mode architecture:** `CLOUDFLARE=1` toggles between Node.js (filesystem
-  document access) and Workers (R2 document access). Document service uses
-  `globalThis.__R2_BUCKET` to detect mode.
-- **`workers/app.ts` is NOT type-checked** by `tsc --noEmit` (excluded from
-  `tsconfig.json` includes). Run `bun run cf:typegen` for Wrangler types.
+- **Conversations persist to Neon Postgres**, not localStorage — all
+  persistence goes through API resource routes (`/api/conversations*`).
+- **Optimistic UI:** `_auth._index.tsx` updates local state immediately,
+  then persists asynchronously via fetch.
+- **Document cache has no TTL:** `docCache`/`searchIndexCache` in
+  `document-service.ts` persist for the process lifetime. Restart the
+  service after updating documents (`make ec2-sync-docs` does this).
 - **Custom CSS theme classes:** `pi-streaming-cursor`, `pi-pulse-dot`,
   `pi-thinking-text`, `pi-tool-pending/error/success`, `pi-diff-added/removed/`
   `context`, `pi-md-heading/code/link/quote/list-bullet` (`app/globals.css`).
@@ -298,3 +270,32 @@ Hermes gateway on 3000).
   CRUD lives in the route component and API routes.
 - The skill dir (`~/.hermes/skills/...`) is environment-specific and untracked —
   don't hardcode its contents.
+
+## Deployment
+
+**Primary: EC2 (systemd + nginx + Let's Encrypt).** Runs on an EC2 Ubuntu
+instance as a systemd service behind nginx with TLS via certbot on
+`ontariochat.duckdns.org`. The Node.js build (`bun run build` →
+`react-router-serve`) is the production runtime. Documents are read from
+the filesystem, synced via `make ec2-sync-docs`.
+
+| Concern | EC2 solution |
+|---------|--------------|
+| Process manager | `deploy/systemd/ontario-land-use-chat.service` |
+| Reverse proxy / TLS | `deploy/nginx/ontario-land-use-chat.conf` + certbot |
+| Document storage | Filesystem, synced via `make ec2-sync-docs` (rsync + restart) |
+| Deploys | `make ec2-deploy` (git pull → bun install → build → systemctl restart) |
+| Logs / status | `make ec2-logs` / `make ec2-status` |
+
+Makefile `ec2-*` targets: `ec2-setup` (one-time provisioning),
+`ec2-deploy`, `ec2-sync-docs`, `ec2-status`, `ec2-logs`, `ec2-restart`,
+`ec2-ssh`. SSH: `ssh -i staff-gnarly-woof-ssh.pem ubuntu@ec2-18-222-140-19.us-east-2.compute.amazonaws.com`.
+
+**Legacy: Mac launchd.** `deploy/launchd/*.plist` runs the app on a local
+Mac via launchd + a Cloudflare quick tunnel for local dev only — not
+production.
+
+Full guide: `deploy/README.md`. One-time EC2 setup: `make ec2-setup`,
+then create `/opt/ontario-land-use-chat/.env`, `bun run build`,
+`sudo systemctl enable --now ontario-land-use-chat`, then
+`sudo certbot --nginx -d ontariochat.duckdns.org` for TLS.

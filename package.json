@@ -9,12 +9,6 @@
     "start": "react-router-serve ./build/server/index.js",
     "typecheck": "react-router typegen && tsc --noEmit",
     "db:setup": "node scripts/setup-db.mjs",
-    "cf:dev": "CLOUDFLARE=1 react-router dev",
-    "cf:build": "CLOUDFLARE=1 react-router build",
-    "cf:typegen": "CLOUDFLARE=1 wrangler types && react-router typegen",
-    "cf:deploy": "CLOUDFLARE=1 react-router build && wrangler deploy",
-    "cf:tail": "wrangler tail",
-    "r2:upload": "node scripts/upload-to-r2.mjs",
     "setup:hooks": "bun scripts/setup-hooks.mjs"
   },
   "dependencies": {
@@ -22,7 +16,6 @@
     "@ai-sdk/react": "^4.0.17",
     "@base-ui/react": "^1.6.0",
     "@neondatabase/serverless": "^1.0.1",
-    "@react-router/cloudflare": "^8.2.0",
     "@react-router/fs-routes": "^8.2.0",
     "@react-router/node": "^8.2.0",
     "@react-router/serve": "^8.2.0",
@@ -46,7 +39,6 @@
     "zod": "^4.4.3"
   },
   "devDependencies": {
-    "@cloudflare/vite-plugin": "^1.45.0",
     "@react-router/dev": "^8.2.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^22",
@@ -55,8 +47,7 @@
     "tailwindcss": "^4",
     "typescript": "^5",
     "vite": "^7.1.7",
-    "vite-tsconfig-paths": "^5.1.4",
-    "wrangler": "^4.111.0"
+    "vite-tsconfig-paths": "^5.1.4"
   },
   "trustedDependencies": [
     "sharp",
