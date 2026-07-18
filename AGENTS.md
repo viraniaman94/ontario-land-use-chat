@@ -1,15 +1,8 @@
 # Ontario Land Use Planning Chat
 
-> **Maintenance directive:** Keep this file accurate. When you add/remove/rename
-> a file, change a dependency, update a script, or alter the architecture —
-> update the relevant section in the same change. Prune stale notes. Keep under
-> 16 KB / 300 lines; consolidate or link to a sub-doc if it grows. Don't let
-> it rot.
+> **Maintenance directive:** Keep this file accurate. When you add/remove/rename a file, change a dependency, update a script, or alter the architecture — update the relevant section in the same change. Prune stale notes. Keep under 16 KB / 300 lines; consolidate or link to a sub-doc if it grows.
 
-A React Router v8 chat app wrapping an AI agent that assesses whether proposed
-development projects are feasible under Ontario's land use planning framework
-(provincial policy, provincial plans, municipal official plans, zoning
-by-laws). Scope: 41 planning documents within ~150 km of Peterborough.
+A React Router v8 chat app wrapping an AI agent that assesses whether proposed development projects are feasible under Ontario's land use planning framework (provincial policy, provincial plans, official plans, zoning by-laws). Scope: 41 documents within ~150km of Peterborough.
 
 > **Before relying on any AI SDK / React Router API detail, verify against the
 > installed versions** — these are newer than most training cutoffs. Use
@@ -59,8 +52,9 @@ app/
   entry.server.tsx               Custom SSR entry (Web Streams, Node 18+ compatible)
   globals.css                    Tailwind v4 + custom pi-* theme classes
   routes/
-    _auth.tsx                    Pathless layout: authMiddleware guard + DB schema init
-    _auth._index.tsx             Home page: sidebar + chat, conversation CRUD (optimistic UI)
+    _auth.tsx                    Pathless layout: authMiddleware + ensureSchema + chat shell (sidebar + Outlet); owns conversation state, activeId from URL `/c/<id>`
+    _auth._index.tsx             Home (`/`): "Start a new assessment" placeholder → navigates to `/c/<id>`
+    _auth.c.$conversationId.tsx  Conversation route (`/c/<id>`): bookmarkable URL per chat; renders <Chat>
     login.tsx / logout.tsx       Password login page / logout resource route (GET + POST)
     api.chat.ts                  Streaming chat endpoint (POST, SSE)
     api.conversations.ts*        GET/POST/PUT/DELETE conversations + messages
@@ -76,6 +70,7 @@ app/
     use-stream-status.ts         Chat stream status + stall timeout
     use-mobile.ts                Viewport breakpoint hook (768px)
   lib/
+    chat-nav-context.ts          Shared context: sidebar list + nav/persist handlers between _auth layout and child routes
     ai-provider.ts               Ollama Cloud provider + MODEL_ID ("deepseek-v4-pro")
     agent/
       document-service.ts        Document read/list/search (filesystem), cache
@@ -112,8 +107,7 @@ owns `useChat`) → `ChatHeader`, `ChatMessages` (auto-scroll, empty state,
 "Analyzing…"; `AssistantMessage` routes parts: `MarkdownContent` text,
 `ThinkingBlock` reasoning, `ToolCallBlock` tool-* state-tinted, `step-start`
 separators; `ChatMessage` for user bubbles), `ChatInput` (textarea +
-send/stop), `StreamStatusBar` (always-on stream-state line: dot + label +
-elapsed timer, rendered above the input).
+send/stop), `StreamStatusBar` (always-on stream-state line above the input).
 
 ## How the Agent Works
 
@@ -259,14 +253,14 @@ Dev server runs on **port 5173** (Vite default). Production defaults to
   `@/*` is used by shadcn/ui; `~/*` is React Router convention.
 - **Conversations persist to Neon Postgres**, not localStorage — all
   persistence goes through API resource routes (`/api/conversations*`).
-- **Optimistic UI:** `_auth._index.tsx` updates local state immediately,
-  then persists asynchronously via fetch.
+- **Optimistic UI:** The `_auth.tsx` layout updates the conversation list
+  immediately, then persists asynchronously via fetch. `activeId` is derived
+  from the URL (`/c/<id>`), so chats are bookmarkable/refreshable independently.
 - **Skill content is vendored at `skill/`** (see Document Storage): scaffolding git-tracked, `documents/` gitignored + rsync'd to EC2. `LAND_USE_SKILL_DIR`/`LAND_USE_DOCS_DIR` override paths.
 - **Custom CSS theme classes:** `pi-streaming-cursor`, `pi-pulse-dot`,
   `pi-thinking-text`, `pi-tool-pending/error/success`, `pi-diff-added/removed/`
   `context`, `pi-md-heading/code/link/quote/list-bullet` (`app/globals.css`).
-- **`use-conversations.ts` is vestigial** — only the `ConversationMeta` type;
-  CRUD lives in the route component and API routes.
+- **`use-conversations.ts` is vestigial** — only the `ConversationMeta` type; CRUD lives in the `_auth.tsx` layout and API routes.
 
 ## Deployment
 
@@ -291,9 +285,4 @@ Makefile `ec2-*` targets: `ec2-setup` (one-time provisioning),
 
 **Legacy: Mac launchd.** `deploy/launchd/*.plist` runs the app on a local
 Mac via launchd + a Cloudflare quick tunnel for local dev only — not
-production.
-
-Full guide: `deploy/README.md`. One-time EC2 setup: `make ec2-setup`,
-then create `/opt/ontario-land-use-chat/.env`, `bun run build`,
-`sudo systemctl enable --now ontario-land-use-chat`, then
-`sudo certbot --nginx -d ontariochat.duckdns.org` for TLS.
+production. Full guide: `deploy/README.md`.
