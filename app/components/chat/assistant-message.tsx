@@ -108,7 +108,7 @@ export function AssistantMessage({
                   return (
                     <Tool
                       key={`tool-${toolPart.toolCallId || index}`}
-                      defaultOpen={toolPart.state === "output-available"}
+                      defaultOpen={false}
                     >
                       <ToolHeader
                         type="dynamic-tool"
@@ -131,7 +131,7 @@ export function AssistantMessage({
                 return (
                   <Tool
                     key={`tool-${toolPart.toolCallId || index}`}
-                    defaultOpen={toolPart.state === "output-available"}
+                    defaultOpen={false}
                   >
                     <ToolHeader
                       type={toolPart.type}

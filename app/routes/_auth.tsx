@@ -238,7 +238,7 @@ export default function AuthLayout() {
           onNew={onNew}
           onDelete={onDelete}
         />
-        <SidebarInset>
+        <SidebarInset className="min-w-0 overflow-x-hidden">
           <div className="flex flex-1 flex-col">
             <div className="flex items-center gap-1 px-3 py-2 md:hidden">
               <SidebarTrigger />

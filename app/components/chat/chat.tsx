@@ -16,7 +16,6 @@ import {
   PromptInput,
   PromptInputTextarea,
   PromptInputSubmit,
-  PromptInputFooter,
 } from "@/components/ai-elements/prompt-input";
 
 interface ChatProps {
@@ -57,7 +56,7 @@ export function Chat({ id, onPersist }: ChatProps) {
   // Show a loading state while fetching initial messages
   if (initialMessages === null) {
     return (
-      <div className="flex h-svh w-full flex-col">
+      <div className="flex h-svh w-full min-w-0 flex-col">
         <ChatHeader />
         <div className="flex flex-1 items-center justify-center">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
@@ -114,7 +113,7 @@ const ChatInner = memo(function ChatInner({
   const [input, setInput] = useState("");
 
   return (
-    <div className="flex h-svh w-full flex-col">
+    <div className="flex h-svh w-full min-w-0 flex-col">
       <ChatHeader />
       <Conversation>
         <ConversationContent className="gap-4 p-6">
@@ -212,12 +211,10 @@ const ChatInner = memo(function ChatInner({
               : undefined
           }
         />
-        <PromptInputFooter>
-          <p className="w-full text-center text-xs text-muted-foreground">
-            Enter to send · Shift+Enter for new line
-          </p>
-        </PromptInputFooter>
       </PromptInput>
+      <p className="px-4 pb-3 text-center text-xs text-muted-foreground">
+        Enter to send · Shift+Enter for new line
+      </p>
     </div>
   );
 });
