@@ -11,7 +11,7 @@ import {
   ToolInput,
   ToolOutput,
 } from "@/components/ai-elements/tool";
-import type { UIMessage } from "ai";
+import type { DynamicToolUIPart, ToolUIPart, UIMessage } from "ai";
 
 interface AssistantMessageProps {
   message: UIMessage;
@@ -104,15 +104,7 @@ export function AssistantMessage({
 
               if (isToolPart) {
                 if (part.type === "dynamic-tool") {
-                  const toolPart = part as {
-                    type: "dynamic-tool";
-                    toolName: string;
-                    toolCallId: string;
-                    state: string;
-                    input?: unknown;
-                    output?: unknown;
-                    errorText?: string;
-                  };
+                  const toolPart = part as DynamicToolUIPart;
                   return (
                     <Tool
                       key={`tool-${toolPart.toolCallId || index}`}
@@ -121,7 +113,7 @@ export function AssistantMessage({
                       <ToolHeader
                         type="dynamic-tool"
                         toolName={toolPart.toolName}
-                        state={toolPart.state as any}
+                        state={toolPart.state}
                       />
                       <ToolContent>
                         <ToolInput input={toolPart.input} />
@@ -135,22 +127,15 @@ export function AssistantMessage({
                 }
 
                 // Static named tool (tool-readDocument, tool-listDocuments, etc.)
-                const toolPart = part as {
-                  type: string;
-                  toolCallId: string;
-                  state: string;
-                  input?: unknown;
-                  output?: unknown;
-                  errorText?: string;
-                };
+                const toolPart = part as ToolUIPart;
                 return (
                   <Tool
                     key={`tool-${toolPart.toolCallId || index}`}
                     defaultOpen={toolPart.state === "output-available"}
                   >
                     <ToolHeader
-                      type={toolPart.type as any}
-                      state={toolPart.state as any}
+                      type={toolPart.type}
+                      state={toolPart.state}
                     />
                     <ToolContent>
                       <ToolInput input={toolPart.input} />

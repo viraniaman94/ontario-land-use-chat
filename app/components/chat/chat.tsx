@@ -1,6 +1,6 @@
 import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
-import { DefaultChatTransport, type ChatStatus, type UIMessage } from "ai";
+import { DefaultChatTransport, type UIMessage } from "ai";
 import { ChatHeader } from "./chat-header";
 import { StreamStatusBar } from "./stream-status-bar";
 import { useStreamStatus } from "@/hooks/use-stream-status";
@@ -201,7 +201,7 @@ const ChatInner = memo(function ChatInner({
           style={{ minHeight: 52 }}
         />
         <PromptInputSubmit
-          status={status as ChatStatus}
+          status={status}
           disabled={!input.trim()}
           onStop={
             streamStatus.inFlight

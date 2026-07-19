@@ -40,8 +40,9 @@ gitignored. No external deps (system `sqlite3`).
 - **EC2 Ubuntu** (systemd + nginx + Let's Encrypt) for production.
   Documents are read from the filesystem; no R2/Workers involved.
 - **Tailwind v4** + **shadcn/ui** (`base-nova` style) on **`@base-ui/react`**
-  primitives (NOT Radix); **react-markdown** + **remark-gfm** +
-  **rehype-highlight** for rendering assistant messages
+  primitives (NOT Radix); assistant UI uses **Vercel AI Elements**
+  (`app/components/ai-elements/`, consumes AI SDK `UIMessage` parts) — markdown
+  via **Streamdown**, NOT react-markdown. See `docs/chat-ui.md`.
 
 ## Project Layout
 
@@ -50,7 +51,7 @@ app/
   root.tsx                       Root layout (HTML shell, TooltipProvider)
   routes.ts                      Flat file route config (flatRoutes from @react-router/fs-routes)
   entry.server.tsx               Custom SSR entry (Web Streams, Node 18+ compatible)
-  globals.css                    Tailwind v4 + custom pi-* theme classes
+  globals.css                    Tailwind v4 + `@source` Streamdown + `pi-status-dot*` classes
   routes/
     _auth.tsx                    Pathless layout: authMiddleware + ensureSchema + chat shell (sidebar + Outlet); owns conversation state, activeId from URL `/c/<id>`
     _auth._index.tsx             Home (`/`): "Start a new assessment" placeholder → navigates to `/c/<id>`
@@ -64,7 +65,7 @@ app/
   db/
     client.ts                    Neon client, conversation/message CRUD, ensureSchema()
     schema.sql                   Database schema (conversations + messages, indexes)
-  components/                    chat/ (see below) + ui/ (vendored shadcn/ui, base-ui)
+  components/                    chat/ (see below) + ai-elements/ (Vercel AI Elements) + ui/ (shadcn/ui, base-ui)
   hooks/
     use-conversations.ts         ConversationMeta type only (CRUD moved to route layer)
     use-stream-status.ts         Chat stream status + stall timeout
@@ -102,12 +103,10 @@ converted-docs/                  Marker-converted Markdown docs (gitignored)
 
 ### Chat Component Tree
 
-`Chat` (loads conversation from DB, persist guard) → `ChatInner` (memoized,
-owns `useChat`) → `ChatHeader`, `ChatMessages` (auto-scroll, empty state,
-"Analyzing…"; `AssistantMessage` routes parts: `MarkdownContent` text,
-`ThinkingBlock` reasoning, `ToolCallBlock` tool-* state-tinted, `step-start`
-separators; `ChatMessage` for user bubbles), `ChatInput` (textarea +
-send/stop), `StreamStatusBar` (always-on stream-state line above the input).
+`Chat` → `ChatInner` (owns `useChat`) → `ChatHeader`, `Conversation`,
+`AssistantMessage`, `PromptInput`, `StreamStatusBar`. Migrated to Vercel AI
+Elements (components in `app/components/ai-elements/`; `prompt-input.tsx` forked
+for `@base-ui/react@1.6.0`). Full tree + accepted regressions: `docs/chat-ui.md`.
 
 ## How the Agent Works
 
@@ -257,9 +256,9 @@ Dev server runs on **port 5173** (Vite default). Production defaults to
   immediately, then persists asynchronously via fetch. `activeId` is derived
   from the URL (`/c/<id>`), so chats are bookmarkable/refreshable independently.
 - **Skill content is vendored at `skill/`** (see Document Storage): scaffolding git-tracked, `documents/` gitignored + rsync'd to EC2. `LAND_USE_SKILL_DIR`/`LAND_USE_DOCS_DIR` override paths.
-- **Custom CSS theme classes:** `pi-streaming-cursor`, `pi-pulse-dot`,
-  `pi-thinking-text`, `pi-tool-pending/error/success`, `pi-diff-added/removed/`
-  `context`, `pi-md-heading/code/link/quote/list-bullet` (`app/globals.css`).
+- **Custom CSS theme classes:** only `pi-status-dot*` remain (for
+  `StreamStatusBar`); the `pi-tool-*`/`pi-md-*`/`pi-diff-*`/etc. classes were
+  dropped in the AI Elements migration (see `docs/chat-ui.md`).
 - **`use-conversations.ts` is vestigial** — only the `ConversationMeta` type; CRUD lives in the `_auth.tsx` layout and API routes.
 
 ## Deployment
