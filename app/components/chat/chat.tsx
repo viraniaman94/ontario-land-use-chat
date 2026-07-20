@@ -215,7 +215,7 @@ const ChatInner = memo(function ChatInner({
                   }
                 : undefined
             }
-            className="h-full rounded-md"
+            className="h-full w-auto aspect-square rounded-md"
           />
         </InputGroupAddon>
       </PromptInput>
