@@ -2,10 +2,22 @@ import { memo, useEffect, useMemo, useRef, useState } from "react";
 import { useChat } from "@ai-sdk/react";
 import { DefaultChatTransport, type UIMessage } from "ai";
 import { ChatHeader } from "./chat-header";
-import { ChatMessages } from "./chat-messages";
-import { ChatInput } from "./chat-input";
 import { StreamStatusBar } from "./stream-status-bar";
 import { useStreamStatus } from "@/hooks/use-stream-status";
+import { AssistantMessage } from "./assistant-message";
+import {
+  Conversation,
+  ConversationContent,
+  ConversationEmptyState,
+  ConversationScrollButton,
+} from "@/components/ai-elements/conversation";
+import { Message, MessageContent } from "@/components/ai-elements/message";
+import {
+  PromptInput,
+  PromptInputTextarea,
+  PromptInputSubmit,
+} from "@/components/ai-elements/prompt-input";
+import { InputGroupAddon } from "@/components/ui/input-group";
 
 interface ChatProps {
   id: string;
@@ -45,7 +57,7 @@ export function Chat({ id, onPersist }: ChatProps) {
   // Show a loading state while fetching initial messages
   if (initialMessages === null) {
     return (
-      <div className="flex h-svh w-full flex-col">
+      <div className="flex h-svh w-full min-w-0 flex-col">
         <ChatHeader />
         <div className="flex flex-1 items-center justify-center">
           <div className="h-6 w-6 animate-spin rounded-full border-2 border-muted-foreground border-t-transparent" />
@@ -100,27 +112,111 @@ const ChatInner = memo(function ChatInner({
   });
 
   return (
-    <div className="flex h-svh w-full flex-col">
+    <div className="flex h-svh w-full min-w-0 flex-col">
       <ChatHeader />
-      <ChatMessages messages={messages} status={status} />
+      <Conversation>
+        <ConversationContent className="gap-4 p-6">
+          {messages.length === 0 && status !== "submitted" && (
+            <ConversationEmptyState>
+              <div className="mx-auto my-auto max-w-md text-center text-muted-foreground">
+                <h2 className="mb-2 text-lg font-semibold text-foreground">
+                  Start a Feasibility Assessment
+                </h2>
+                <p className="text-sm">
+                  Describe your proposed development project — include the
+                  site location, municipality, proposed land use, and project
+                  scale. The agent will analyze it against provincial policy,
+                  official plans, and zoning by-laws.
+                </p>
+                <p className="mt-3 text-xs">
+                  <code className="rounded bg-muted px-1.5 py-0.5">Enter</code> to
+                  send · <code className="rounded bg-muted px-1.5 py-0.5">Shift+Enter</code>{" "}
+                  for a new line
+                </p>
+              </div>
+            </ConversationEmptyState>
+          )}
+          {status === "submitted" &&
+            messages.length > 0 &&
+            messages[messages.length - 1].role === "user" && (
+              <Message from="assistant">
+                <MessageContent>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span className="h-2 w-2 animate-pulse rounded-full bg-current" />
+                    Analyzing documents…
+                  </div>
+                </MessageContent>
+              </Message>
+            )}
+          {messages.map((message, index) => {
+            const isActive =
+              (status === "streaming" || status === "submitted") &&
+              index === messages.length - 1;
+            const isStreaming = isActive && message.role === "assistant";
+
+            if (message.role === "assistant") {
+              return (
+                <AssistantMessage
+                  key={message.id}
+                  message={message}
+                  isStreaming={isStreaming}
+                />
+              );
+            }
+
+            // User messages: extract text parts
+            const text =
+              message.parts
+                ?.filter((p) => p.type === "text")
+                .map((p) => (p as { text: string }).text)
+                .join("") ?? "";
+
+            return (
+              <Message key={message.id} from="user">
+                <MessageContent>
+                  <div className="whitespace-pre-wrap">{text}</div>
+                </MessageContent>
+              </Message>
+            );
+          })}
+        </ConversationContent>
+        <ConversationScrollButton />
+      </Conversation>
       <StreamStatusBar info={streamStatus} />
-      <ChatInput
-        onSend={(text) => {
+      <PromptInput
+        className="border-t bg-background p-4"
+        onSubmit={(msg) => {
+          const text = msg.text.trim();
+          if (!text) return;
           streamStatus.markSend();
           void sendMessage({ text });
         }}
-        onStop={
-          streamStatus.inFlight
-            ? () => {
-                streamStatus.markStop();
-                stop();
-              }
-            : undefined
-        }
-        disabled={streamStatus.inFlight}
-        isStreaming={streamStatus.inFlight}
-        streamStatus={streamStatus.status}
-      />
+      >
+        <PromptInputTextarea
+          placeholder="Describe your project: location, municipality, proposed use, scale..."
+          className="min-h-[80px] px-3"
+        />
+        <InputGroupAddon
+          align="inline-end"
+          className="self-stretch pl-2 pr-2 py-1"
+        >
+          <PromptInputSubmit
+            status={status}
+            onStop={
+              streamStatus.inFlight
+                ? () => {
+                    streamStatus.markStop();
+                    stop();
+                  }
+                : undefined
+            }
+            className="h-full rounded-md"
+          />
+        </InputGroupAddon>
+      </PromptInput>
+      <p className="px-4 pb-3 text-center text-xs text-muted-foreground">
+        Enter to send · Shift+Enter for new line
+      </p>
     </div>
   );
 });
