@@ -12,11 +12,7 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
-import {
-  PromptInput,
-  PromptInputTextarea,
-  PromptInputSubmit,
-} from "@/components/ai-elements/prompt-input";
+import { PromptInputSubmit } from "@/components/ai-elements/prompt-input";
 
 interface ChatProps {
   id: string;
@@ -184,24 +180,42 @@ const ChatInner = memo(function ChatInner({
         <ConversationScrollButton />
       </Conversation>
       <StreamStatusBar info={streamStatus} />
-      <PromptInput
-        className="border-t bg-background p-4"
-        onSubmit={(msg) => {
-          const text = msg.text.trim();
+      <form
+        className="flex items-end gap-2 border-t bg-background p-4"
+        onSubmit={(e) => {
+          e.preventDefault();
+          const text = input.trim();
           if (!text) return;
           streamStatus.markSend();
+          setInput("");
           void sendMessage({ text });
         }}
       >
-        <PromptInputTextarea
+        <textarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (
+              e.key === "Enter" &&
+              !e.shiftKey &&
+              !e.nativeEvent.isComposing
+            ) {
+              e.preventDefault();
+              const form = e.currentTarget.form;
+              const submit = form?.querySelector(
+                'button[type="submit"]',
+              ) as HTMLButtonElement | null;
+              if (submit?.disabled) return;
+              form?.requestSubmit();
+            }
+          }}
           placeholder="Describe your project: location, municipality, proposed use, scale..."
-          style={{ minHeight: 52 }}
+          rows={1}
+          className="field-sizing-content max-h-48 min-h-[52px] flex-1 resize-none rounded-lg border border-input bg-transparent px-3 py-2.5 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
         />
         <PromptInputSubmit
           status={status}
-          disabled={!input.trim()}
+          disabled={!input.trim() && !streamStatus.inFlight}
           onStop={
             streamStatus.inFlight
               ? () => {
@@ -210,8 +224,9 @@ const ChatInner = memo(function ChatInner({
                 }
               : undefined
           }
+          className="h-[52px] w-10 shrink-0"
         />
-      </PromptInput>
+      </form>
       <p className="px-4 pb-3 text-center text-xs text-muted-foreground">
         Enter to send · Shift+Enter for new line
       </p>
