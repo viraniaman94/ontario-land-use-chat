@@ -111,8 +111,6 @@ const ChatInner = memo(function ChatInner({
     messages,
   });
 
-  const [input, setInput] = useState("");
-
   return (
     <div className="flex h-svh w-full min-w-0 flex-col">
       <ChatHeader />
@@ -191,13 +189,10 @@ const ChatInner = memo(function ChatInner({
           const text = msg.text.trim();
           if (!text) return;
           streamStatus.markSend();
-          setInput("");
           void sendMessage({ text });
         }}
       >
         <PromptInputTextarea
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
           placeholder="Describe your project: location, municipality, proposed use, scale..."
           className="min-h-[80px] px-3"
         />
@@ -207,7 +202,6 @@ const ChatInner = memo(function ChatInner({
         >
           <PromptInputSubmit
             status={status}
-            disabled={!input.trim() && !streamStatus.inFlight}
             onStop={
               streamStatus.inFlight
                 ? () => {
