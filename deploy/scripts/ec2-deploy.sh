@@ -23,6 +23,21 @@ log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
 # ~/.bun/bin by bun.sh/install) isn't on PATH. Prepend it.
 export PATH="$HOME/.bun/bin:$PATH"
 
+# The Vite production build (client env) is memory-hungry — on a ~2 GB EC2
+# instance it OOMs before the AI Elements/Streamdown/Shiki deps are bundled.
+# A 2 GB swap file (created at provisioning) plus a raised V8 heap ceiling
+# lets the build spill to swap and finish. Keep this even after an instance
+# upgrade; it's a no-op where memory is plentiful.
+export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=2048"
+if ! swapon --show | grep -q .; then
+  log "No swap detected; creating a 2 GB swap file so the build can finish…"
+  sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
+  sudo chmod 600 /swapfile
+  sudo mkswap /swapfile
+  sudo swapon /swapfile
+  grep -q '^/swapfile ' /etc/fstab || echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab >/dev/null
+fi
+
 cd "$APP_DIR"
 
 log "Pulling latest code…"
@@ -32,7 +47,7 @@ git pull --ff-only
 log "Installing dependencies (frozen lockfile)…"
 bun install --frozen-lockfile
 
-log "Building production bundle…"
+log "Building production bundle (NODE_OPTIONS=$NODE_OPTIONS)…"
 bun run build
 
 log "Restarting service…"
