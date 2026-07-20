@@ -191,6 +191,7 @@ const ChatInner = memo(function ChatInner({
           const text = msg.text.trim();
           if (!text) return;
           streamStatus.markSend();
+          setInput("");
           void sendMessage({ text });
         }}
       >
