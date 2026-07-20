@@ -12,7 +12,12 @@ import {
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import { Message, MessageContent } from "@/components/ai-elements/message";
-import { PromptInputSubmit } from "@/components/ai-elements/prompt-input";
+import {
+  PromptInput,
+  PromptInputTextarea,
+  PromptInputSubmit,
+} from "@/components/ai-elements/prompt-input";
+import { InputGroupAddon } from "@/components/ui/input-group";
 
 interface ChatProps {
   id: string;
@@ -180,53 +185,40 @@ const ChatInner = memo(function ChatInner({
         <ConversationScrollButton />
       </Conversation>
       <StreamStatusBar info={streamStatus} />
-      <form
-        className="flex items-end gap-2 border-t bg-background p-4"
-        onSubmit={(e) => {
-          e.preventDefault();
-          const text = input.trim();
+      <PromptInput
+        className="border-t bg-background p-4"
+        onSubmit={(msg) => {
+          const text = msg.text.trim();
           if (!text) return;
           streamStatus.markSend();
-          setInput("");
           void sendMessage({ text });
         }}
       >
-        <textarea
+        <PromptInputTextarea
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (
-              e.key === "Enter" &&
-              !e.shiftKey &&
-              !e.nativeEvent.isComposing
-            ) {
-              e.preventDefault();
-              const form = e.currentTarget.form;
-              const submit = form?.querySelector(
-                'button[type="submit"]',
-              ) as HTMLButtonElement | null;
-              if (submit?.disabled) return;
-              form?.requestSubmit();
-            }
-          }}
           placeholder="Describe your project: location, municipality, proposed use, scale..."
-          rows={1}
-          className="field-sizing-content max-h-48 min-h-[52px] flex-1 resize-none rounded-lg border border-input bg-transparent px-3 py-2.5 text-sm shadow-sm outline-none placeholder:text-muted-foreground focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+          className="min-h-[80px] px-3"
         />
-        <PromptInputSubmit
-          status={status}
-          disabled={!input.trim() && !streamStatus.inFlight}
-          onStop={
-            streamStatus.inFlight
-              ? () => {
-                  streamStatus.markStop();
-                  stop();
-                }
-              : undefined
-          }
-          className="h-[52px] w-10 shrink-0"
-        />
-      </form>
+        <InputGroupAddon
+          align="inline-end"
+          className="self-stretch pl-2 pr-2 py-1"
+        >
+          <PromptInputSubmit
+            status={status}
+            disabled={!input.trim() && !streamStatus.inFlight}
+            onStop={
+              streamStatus.inFlight
+                ? () => {
+                    streamStatus.markStop();
+                    stop();
+                  }
+                : undefined
+            }
+            className="h-full rounded-md"
+          />
+        </InputGroupAddon>
+      </PromptInput>
       <p className="px-4 pb-3 text-center text-xs text-muted-foreground">
         Enter to send · Shift+Enter for new line
       </p>
