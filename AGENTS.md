@@ -1,13 +1,10 @@
 # Ontario Land Use Planning Chat
 
-> **Maintenance directive:** Keep this file accurate. When you add/remove/rename a file, change a dependency, update a script, or alter the architecture — update the relevant section in the same change. Prune stale notes. Keep under 16 KB / 300 lines; consolidate or link to a sub-doc if it grows.
+> **Maintenance directive:** Keep this file accurate. Update the relevant section when you add/remove/rename a file, change a dependency/script, or alter architecture. Prune stale notes. Keep under 16 KB / 300 lines; consolidate or link to a sub-doc if it grows.
 
 A React Router v8 chat app wrapping an AI agent that assesses whether proposed development projects are feasible under Ontario's land use planning framework (provincial policy, provincial plans, official plans, zoning by-laws). Scope: 41 documents within ~150km of Peterborough.
 
-> **Before relying on any AI SDK / React Router API detail, verify against the
-> installed versions** — these are newer than most training cutoffs. Use
-> Context7 for AI SDK APIs, and inspect `@react-router/*` package types or
-> docs for React Router v8 specifics.
+> **Verify AI SDK / React Router APIs against installed versions** (newer than training cutoffs). Use Context7 for AI SDK; inspect `@react-router/*` types/docs for v8.
 
 ## Task Tracking (Kanban Board)
 
@@ -35,14 +32,9 @@ gitignored. No external deps (system `sqlite3`).
   `UIMessage[]` with a `parts` array (NOT a `content` string)
 - **OpenAI-compatible LLM provider** — Ollama Cloud, model `deepseek-v4-pro`
   (`OLLAMA_API_KEY`, base URL `https://ollama.com/v1`)
-- **Neon Postgres** (`@neondatabase/serverless` — HTTP-based, serverless-friendly)
-  for persistent conversation and message storage
-- **EC2 Ubuntu** (systemd + nginx + Let's Encrypt) for production.
-  Documents are read from the filesystem; no R2/Workers involved.
-- **Tailwind v4** + **shadcn/ui** (`base-nova` style) on **`@base-ui/react`**
-  primitives (NOT Radix); assistant UI uses **Vercel AI Elements**
-  (`app/components/ai-elements/`, consumes AI SDK `UIMessage` parts) — markdown
-  via **Streamdown**, NOT react-markdown. See `docs/chat-ui.md`.
+- **Neon Postgres** (`@neondatabase/serverless`, HTTP-based) for conversation/message storage
+- **EC2 Ubuntu** (systemd + nginx + Let's Encrypt) for production; docs read from the filesystem, no R2/Workers
+- **Tailwind v4** + **shadcn/ui** (`base-nova`) on **`@base-ui/react`** (NOT Radix); assistant UI uses **Vercel AI Elements** (`app/components/ai-elements/`, consumes `UIMessage` parts) — markdown via **Streamdown**, NOT react-markdown. See `docs/chat-ui.md`.
 
 ## Project Layout
 
@@ -78,8 +70,9 @@ app/
       tools.ts                   AI SDK tool defs: readDocument, listDocuments, searchDocuments
       system-prompt.ts           Builds system prompt (SKILL.md + sections index + template + 10 rules)
     utils.ts                     cn() helper
-skill/                             Vendored skill content (SKILL.md, templates/, references/ tracked;
+skill/                             Vendored skill content (SKILL.md tracked;
   documents/                     Planning docs — GITIGNORED, synced to EC2 via rsync)
+  templates/                      Report templates + examples — GITIGNORED, synced to EC2 via rsync)
 scripts/
   convert_pdfs.py                Marker + LLM PDF→Markdown converter; writes ./converted-docs/*.md
   split_markdown.py              Splits .md docs into section files with _index.md + sections-index.md
@@ -111,10 +104,10 @@ for `@base-ui/react@1.6.0`). Full tree + accepted regressions: `docs/chat-ui.md`
 ## How the Agent Works
 
 `lib/agent/system-prompt.ts` assembles: `SKILL.md` (10-step assessment
-procedure), `templates/feasibility-report.md`, and the top-level
-`sections-index.md`, plus 10 critical rules (never fabricate, always cite, flag
-missing docs, check Bill 17 setbacks, use GO/CONDITIONAL GO/CAUTION/NO-GO
-verdicts).
+procedure) and the top-level `sections-index.md`, plus 10 critical rules
+(never fabricate, always cite, flag missing docs, check Bill 17 setbacks, use
+GO/CONDITIONAL GO/CAUTION/NO-GO verdicts). Report structure follows the
+10-step procedure (no hardcoded template file).
 
 The agent has 3 tools (defined in `lib/agent/tools.ts`, backed by
 `document-service.ts`):
@@ -137,8 +130,7 @@ Documents live under the repo-vendored `skill/` directory:
 | Path | Tracked? | Purpose |
 |------|----------|---------|
 | `skill/SKILL.md` | yes | 10-step assessment procedure |
-| `skill/templates/feasibility-report.md` | yes | Report template |
-| `skill/references/` | yes | Human reference notes |
+| `skill/templates/` | **no** (gitignored) | Report templates + examples (feasibility-reports/, planning-justification-reports/) |
 | `skill/documents/` | **no** (gitignored) | 1,676 planning .md files, split sections, indexes |
 
 Large documents (200 KB–900 KB) are split by `scripts/split_markdown.py`
@@ -151,8 +143,6 @@ The agent navigates without loading whole documents:
 (override `LAND_USE_SKILL_DIR`), documents dir `<skill>/documents/` (override
 `LAND_USE_DOCS_DIR`). `resolveSafe()` guards path traversal; locates the repo
 root via `import.meta.url` (falls back to `process.cwd()`, set by systemd).
-Documents stay out of git and sync to EC2 via rsync in `make ec2-deploy` (or
-`make ec2-sync-docs` for doc-only updates).
 
 In-memory caches (`docCache`, `searchIndexCache`) persist for the process
 lifetime with no TTL — restart the service to pick up doc updates.
@@ -165,9 +155,9 @@ lifetime with no TTL — restart the service to pick up doc updates.
 3. **Split:** `make split-docs` → `split_markdown.py` → section files +
    `_index.md` per doc + top-level `sections-index.md`
 4. **Sync to EC2:** `make ec2-sync-docs` (or `make ec2-deploy`) → rsync
-   `skill/documents/` to the EC2 instance + restart the service (clears the
-   in-memory doc cache). The tracked scaffolding (`SKILL.md`, `templates/`,
-   `references/`) travels via git in `ec2-deploy`; only `documents/` is rsync'd.
+   `skill/documents/` to EC2 + restart (clears the in-memory cache). Only
+   `SKILL.md` is git-tracked; `documents/` and `templates/` are gitignored and
+   rsync'd (`make ec2-sync-docs` / `make ec2-sync-templates`).
 
 ## Authentication
 
@@ -222,19 +212,21 @@ systemd unit's `EnvironmentFile` and by `vite.config.ts` `loadEnv` at build time
 make install              # bun install
 make dev                  # bun dev (local Node.js, filesystem docs)
 make prod                 # build + start
-make convert-docs         # run scripts/convert_pdfs.py (PDF→MD)
-make convert-docs-dry     # preview the file list
+make convert-docs         # PDF→MD via scripts/convert_pdfs.py (Marker + LLM)
 make copy-converted-docs  # copy converted-docs/*.md to skill documents dir
 make split-docs           # split .md docs into section files + indexes
+make docs-pipeline        # full pipeline: convert + copy + split + EC2 sync
+make docs-pipeline-no-sync # local only: convert + copy + split (no EC2)
 bun run db:setup          # create Neon Postgres schema
 bun run typecheck         # react-router typegen && tsc --noEmit
-./scripts/kanban-init.sh  # (re)create the local SQLite kanban board (tasks/kanban.db)
-bun run setup:hooks       # (re)install git hooks (pre-commit guard + pre-push EC2 deploy reminder)
+./scripts/kanban-init.sh  # (re)create the local SQLite kanban board
+bun run setup:hooks       # (re)install git hooks (pre-commit guard + pre-push EC2 reminder)
 
 make ec2-setup       # one-time: install Node, Bun, nginx, ufw, clone repo
-make ec2-sync-docs   # rsync skill/documents/ to EC2 + restart (doc-only update)
-make ec2-deploy      # rsync skill/documents/ + git pull + build + restart
-make ec2-status      # service status + health check   (also: ec2-logs, ec2-restart, ec2-ssh)
+make ec2-sync-docs   # rsync skill/documents/ to EC2 + restart (doc-only)
+make ec2-sync-templates # rsync skill/templates/ to EC2 + restart (template-only)
+make ec2-deploy      # rsync docs+templates + git pull + build + restart
+make ec2-status      # service status + health check (also: ec2-logs, ec2-restart, ec2-ssh)
 ```
 
 Dev server runs on **port 5173** (Vite default). Production defaults to
@@ -255,10 +247,8 @@ Dev server runs on **port 5173** (Vite default). Production defaults to
 - **Optimistic UI:** The `_auth.tsx` layout updates the conversation list
   immediately, then persists asynchronously via fetch. `activeId` is derived
   from the URL (`/c/<id>`), so chats are bookmarkable/refreshable independently.
-- **Skill content is vendored at `skill/`** (see Document Storage): scaffolding git-tracked, `documents/` gitignored + rsync'd to EC2. `LAND_USE_SKILL_DIR`/`LAND_USE_DOCS_DIR` override paths.
-- **Custom CSS theme classes:** only `pi-status-dot*` remain (for
-  `StreamStatusBar`); the `pi-tool-*`/`pi-md-*`/`pi-diff-*`/etc. classes were
-  dropped in the AI Elements migration (see `docs/chat-ui.md`).
+- **Skill content is vendored at `skill/`**: only `SKILL.md` is git-tracked; `documents/` and `templates/` are gitignored + rsync'd to EC2 (`make ec2-sync-docs` / `make ec2-sync-templates`). `LAND_USE_SKILL_DIR`/`LAND_USE_DOCS_DIR` override paths.
+- **Custom CSS theme classes:** only `pi-status-dot*` remain (for `StreamStatusBar`); the rest were dropped in the AI Elements migration (see `docs/chat-ui.md`).
 - **`use-conversations.ts` is vestigial** — only the `ConversationMeta` type; CRUD lives in the `_auth.tsx` layout and API routes.
 
 ## Deployment
@@ -268,20 +258,18 @@ instance as a systemd service behind nginx with TLS via certbot on
 `ontariochat.duckdns.org`. The Node.js build (`bun run build` →
 `react-router-serve`) is the production runtime. Documents are read from
 the repo-vendored `skill/documents/` tree (gitignored), synced via
-`make ec2-deploy` (or `make ec2-sync-docs` for doc-only updates).
+`make ec2-deploy` (or `make ec2-sync-docs` for doc-only updates,
+`make ec2-sync-templates` for template-only updates).
 
 | Concern | EC2 solution |
 |---------|--------------|
 | Process manager | `deploy/systemd/ontario-land-use-chat.service` |
 | Reverse proxy / TLS | `deploy/nginx/ontario-land-use-chat.conf` + certbot |
 | Document storage | Filesystem under `skill/documents/` (gitignored), synced via `make ec2-deploy` / `make ec2-sync-docs` (rsync + restart) |
+| Report templates | Filesystem under `skill/templates/` (gitignored), synced via `make ec2-deploy` / `make ec2-sync-templates` (rsync + restart) |
 | Deploys | `make ec2-deploy` (git pull → bun install → build → systemctl restart) |
 | Logs / status | `make ec2-logs` / `make ec2-status` |
 
-Makefile `ec2-*` targets: `ec2-setup` (one-time provisioning),
-`ec2-deploy`, `ec2-sync-docs`, `ec2-status`, `ec2-logs`, `ec2-restart`,
-`ec2-ssh`. SSH: `ssh -i staff-gnarly-woof-ssh.pem ubuntu@ec2-18-222-140-19.us-east-2.compute.amazonaws.com`.
+Makefile `ec2-*` targets: `ec2-setup`, `ec2-deploy`, `ec2-sync-docs`, `ec2-sync-templates`, `ec2-status`, `ec2-logs`, `ec2-restart`, `ec2-ssh`. SSH details in the Makefile (`EC2_KEY`/`EC2_HOST`).
 
-**Legacy: Mac launchd.** `deploy/launchd/*.plist` runs the app on a local
-Mac via launchd + a Cloudflare quick tunnel for local dev only — not
-production. Full guide: `deploy/README.md`.
+**Legacy: Mac launchd.** `deploy/launchd/*.plist` — local dev only, not production. Guide: `deploy/README.md`.

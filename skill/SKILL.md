@@ -35,35 +35,27 @@ This skill follows a **local-document-knowledge-base** architecture:
   separate RAG system, vector store, or external service
 - The agent reads documents directly from disk using `read_file` or
   `web_extract` (for PDFs) and reasons through the 10-step procedure below
-- The feasibility report is generated from `templates/feasibility-report.md`
-- See `references/regulatory-framework.md` for the full Ontario planning
-  hierarchy and compliance standards
-- See `references/bill17-changes.md` for detailed Bill 17 (2025) amendments
-- See `references/existing-ai-tools.md` for a survey of comparable tools
-- See `references/peterborough-research-notes.md` for confirmed context
-  sources and research techniques for the City of Peterborough
-- See `references/municipal-url-discovery.md` for resolved broken/missing
-  municipal OP URLs and the search techniques used to find them
+- The feasibility report follows the 10-step procedure below
 - Run `python3 scripts/verify-downloads.py` to verify all downloaded
   documents are valid PDFs (not Cloudflare challenge pages or error HTML)
 
-### Next.js Web App (Agent Layer)
+### Web App (Agent Layer)
 
-A Next.js web app at `/Users/amanv/Projects/ontario-land-use-chat`
+A React Router v8 web app at `/Users/amanv/Projects/ontario-land-use-chat`
 operationalizes this skill as a chat-based AI agent. The agent layer
-lives under `lib/agent/` and consists of three modules:
+lives under `app/lib/agent/` and consists of three modules:
 
-- `document-service.ts` — reads PDFs/HTML from this skill's `documents/`
-  directory with path traversal protection, in-memory caching, and 50K
-  character truncation. Uses `pdf-parse` v2 for PDF text extraction.
-- `system-prompt.ts` — builds the system prompt from this SKILL.md +
-  the document index + the report template + 10 critical rules.
+- `document-service.ts` — reads planning .md section files from this skill's
+  `documents/` directory with path traversal protection, in-memory caching,
+  and 50K character truncation.
+- `system-prompt.ts` — builds the system prompt from this SKILL.md + the
+  document index + 10 critical rules.
 - `tools.ts` — three AI SDK (`ai@7`) tools (`readDocument`,
-  `listDocuments`, `searchDocuments`) using `tool()` with Zod v4
-  `inputSchema` for parameter validation.
+  `listDocuments`, `searchDocuments`) using `tool()` with Zod `inputSchema`
+  for parameter validation.
 
-See `references/web-app-agent-layer.md` for the full architecture,
-code patterns, and the pdf-parse v2 API details.
+Full architecture and code patterns are documented in the repo's
+`AGENTS.md`.
 
 ## Document Knowledge Base
 
@@ -324,9 +316,11 @@ Key risk factors to flag:
 
 ### Step 10: Generate Feasibility Report
 
-Use the template at `templates/feasibility-report.md` to generate the
-final report. Fill in every section. If a section is not applicable,
-state "Not applicable" with a brief reason.
+Structure the final report per the 10-step procedure: Project Information,
+Feasibility Verdict, then each analysis layer (PPS 2024, Provincial Plans,
+Official Plan, Zoning, Overlays), Required Approvals & Pathway, Risk
+Assessment, and a final verdict. Fill in every section. If a section is not
+applicable, state "Not applicable" with a brief reason.
 
 **Verdict definitions:**
 - **GO**: All layers pass. Project is compliant or needs only routine
@@ -419,9 +413,7 @@ before proceeding.
   portal (`<name>.civicweb.net`) — many Ontario municipalities host
   their OP PDFs there even when the main site lacks a planning page;
   (3) use browser navigation if the site's internal search doesn't
-  respond to headless requests. See
-  `references/municipal-url-discovery.md` for the 4 URLs discovered
-  this way and the exact search strings that worked.
+  respond to headless requests.
 - **Cloudflare-protected municipal sites**: Some municipal sites
   (confirmed: `hastingscounty.com`) use Cloudflare bot protection that
   blocks BOTH curl downloads AND browser automation (the browser gets

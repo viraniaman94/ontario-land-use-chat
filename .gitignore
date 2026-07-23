@@ -40,11 +40,14 @@ yarn-error.log*
 /scripts/convert-report.json
 /scripts/convert-report.csv
 
-# Skill planning documents — generated from PDFs, too large to track.
-# The skill scaffolding (skill/SKILL.md, templates/, references/) IS tracked;
-# only skill/documents/ is excluded and synced to EC2 via `make ec2-sync-docs`
-# (or automatically during `make ec2-deploy`).
+# Skill content kept out of git and synced to EC2 via rsync — too large or
+# reference-only (PDFs/converted markdown + report example templates).
+# The skill scaffolding (skill/SKILL.md, skill/references/) IS tracked;
+# skill/documents/ (planning docs) and skill/templates/ (report templates +
+# examples) are excluded and synced via `make ec2-sync-docs` / `make
+# ec2-sync-templates`, or automatically during `make ec2-deploy`.
 /skill/documents/
+/skill/templates/
 
 # Next.js build output (migrated away, but keep ignored)
 /.next/

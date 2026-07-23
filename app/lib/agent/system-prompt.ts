@@ -8,16 +8,17 @@ import { listDocuments, readSkillFile } from "./document-service";
  *  - Agent identity
  *  - SKILL.md content (the 10-step assessment procedure)
  *  - Document navigation index (sections-index.md)
- *  - Feasibility report template
  *  - 10 critical rules the agent must follow
+ *
+ * Report structure guidance comes from the 10-step procedure in SKILL.md
+ * (Step 10) plus the verdict/citation rules below.
  *
  * This function is async because document/skill files are read from the
  * filesystem at runtime.
  */
 export async function buildSystemPrompt(): Promise<string> {
-  const [skillMd, reportTemplate, documentIndex] = await Promise.all([
+  const [skillMd, documentIndex] = await Promise.all([
     readSkillFile("SKILL.md"),
-    readSkillFile("templates/feasibility-report.md"),
     listDocuments(),
   ]);
 
@@ -59,11 +60,15 @@ ${documentIndex}
 
 ---
 
-# Feasibility Report Template
+# Report Generation
 
-When generating a feasibility report, follow this template structure. Fill in every section. If a section is not applicable, state "Not applicable" with a brief reason.
-
-${reportTemplate}
+When generating a feasibility report, follow the 10-step assessment
+procedure in SKILL.md (Step 10) and the verdict/citation rules below.
+Structure your report according to the procedure: Project Information,
+Feasibility Verdict, then the analysis layers (PPS, Provincial Plans,
+Official Plan, Zoning, Overlays), Required Approvals, Risk Assessment,
+and a final verdict with citations. If a section is not applicable, state
+"Not applicable" with a brief reason.
 
 ---
 

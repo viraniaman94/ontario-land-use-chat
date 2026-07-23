@@ -4,7 +4,7 @@
 // the repo-vendored skill directory at <repo>/skill/documents (override the
 // skill root via LAND_USE_SKILL_DIR, or just the documents dir via
 // LAND_USE_DOCS_DIR). The skill scaffolding (SKILL.md, templates/,
-// references/) lives at <repo>/skill/ and is tracked in git; the documents/
+// The skill scaffolding (SKILL.md) lives at <repo>/skill/ and is tracked in git; the documents/
 // tree is gitignored and synced to EC2 via rsync during deploy. Large
 // documents are split into section files with per-document _index.md files
 // and a top-level sections-index.md so the agent can navigate without
@@ -53,7 +53,7 @@ const REPO_ROOT = findRepoRoot();
 
 /**
  * The vendored skill directory: <repo>/skill/ by default, or
- * `LAND_USE_SKILL_DIR` if set. Contains SKILL.md, templates/, references/,
+ * `LAND_USE_SKILL_DIR` if set. Contains SKILL.md, templates/,
  * and documents/.
  */
 function getSkillDir(): string {

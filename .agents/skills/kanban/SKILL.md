@@ -117,3 +117,13 @@ Use short, stable, kebab-case ids that describe the work
 - **The `.db` file is tracked; sidecars are gitignored.** `tasks/kanban.db` is
   committable for a snapshot; `*.db-wal/-shm/-journal` are ignored (see `.gitignore`).
 - **No external deps.** Everything uses the system `sqlite3` CLI.
+- **Watch special chars in `--desc` / `--title` / `note` text.** The CLI
+  passes values straight to `sqlite3`, which rejects backslashes and can
+  choke on complex quoting (escaped apostrophes like `agent\'s`, embedded
+  newlines, mixed quotes). Keep these fields to plain ASCII prose — no
+  `\` escapes, no parentheses if avoidable, no multi-line strings. For
+  long or multi-line detail (numbered plans, scope notes), add the task
+  with a short one-line `--desc` and then append the full content via
+  `scripts/kanban note <id> "..."` (one note per line, or several notes).
+  Apostrophes inside double-quoted args are fine; the trap is backslash-
+  escaping them.

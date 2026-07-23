@@ -34,7 +34,7 @@ RSYNC := rsync -avz --progress -e "ssh -i $(EC2_KEY)"
         launch-load launch-unload \
         status logs logs-tun \
         convert-docs convert-docs-dir convert-docs-ocr convert-docs-dry \
-        copy-converted-docs split-docs
+        copy-converted-docs split-docs docs-pipeline
 
 install:
 	$(BUN) install
@@ -172,6 +172,24 @@ SPLIT_SCRIPT := $(APP_DIR)/scripts/split_markdown.py
 split-docs:
 	uv run --with marko $(SPLIT_SCRIPT) $(SKILL_DIR)/documents
 
+# --- End-to-end docs pipeline ---
+#
+# Runs the full PDF -> Markdown -> section files -> EC2 sync pipeline in one
+# command: convert PDFs, copy the converted .md into the skill documents dir,
+# split them into navigable section files, then rsync to EC2 and restart the
+# service to clear the in-memory doc cache. Prerequisites run left-to-right in
+# a single-job make invocation, so the ordering is guaranteed.
+#
+# Tip: run `make convert-docs-dry` first to preview which PDFs will be
+# converted. Skip the EC2 sync with `make docs-pipeline-no-sync` if you only
+# need the local conversion + split (e.g. local dev without EC2 access).
+
+docs-pipeline: convert-docs copy-converted-docs split-docs ec2-sync-docs
+	@echo ">>> Full docs pipeline complete: PDFs converted, split, and synced to EC2."
+
+docs-pipeline-no-sync: convert-docs copy-converted-docs split-docs
+	@echo ">>> Local docs pipeline complete (no EC2 sync): PDFs converted and split."
+
 # ===================================================================
 # EC2 deployment (primary production)
 # ===================================================================
@@ -192,9 +210,9 @@ ec2-setup:
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'bash -s' < deploy/scripts/ec2-setup.sh
 	@echo ">>> EC2 setup complete. Next: make ec2-deploy  (syncs docs + deploys code)"
 
-# Deploy/update the app: rsync documents → git pull → build → restart service.
+# Deploy/update the app: rsync documents + templates → git pull → build → restart service.
 # Pushes the latest deploy scripts first, syncs the gitignored skill/documents/
-# tree (kept out of git), then runs ec2-deploy.sh on EC2.
+# and skill/templates/ trees (kept out of git), then runs ec2-deploy.sh on EC2.
 ec2-deploy: ec2-push-systemd
 	@echo ">>> Syncing skill documents to $(EC2_HOST):$(EC2_APP_DIR)/skill/documents/…"
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'mkdir -p $(EC2_APP_DIR)/skill/documents'
@@ -202,6 +220,12 @@ ec2-deploy: ec2-push-systemd
 	  --exclude='*.pdf' --exclude='*.html' --exclude='.DS_Store' \
 	  $(SKILL_DIR)/documents/ \
 	  $(EC2_USER)@$(EC2_HOST):$(EC2_APP_DIR)/skill/documents/
+	@echo ">>> Syncing skill templates to $(EC2_HOST):$(EC2_APP_DIR)/skill/templates/…"
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'mkdir -p $(EC2_APP_DIR)/skill/templates'
+	$(RSYNC) --delete --delete-excluded \
+	  --exclude='.DS_Store' \
+	  $(SKILL_DIR)/templates/ \
+	  $(EC2_USER)@$(EC2_HOST):$(EC2_APP_DIR)/skill/templates/
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'cd $(EC2_APP_DIR) && bash deploy/scripts/ec2-deploy.sh'
 
 # Install/refresh the systemd unit file on EC2 (does not start it).
@@ -220,8 +244,10 @@ ec2-push-nginx:
 
 # Sync the gitignored skill/documents/ tree from the local repo to EC2, then
 # restart the service to clear the in-memory document cache (no TTL). The
-# tracked skill scaffolding (SKILL.md, templates/, references/) travels via git
-# in `make ec2-deploy`; this target is for document-only updates.
+# tracked skill scaffolding (SKILL.md) travels via git in `make
+# ec2-deploy`; templates/ is gitignored too and synced via `make
+# ec2-sync-templates` (or `make ec2-deploy`). This target is for document-only
+# updates.
 ec2-sync-docs:
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'mkdir -p $(EC2_APP_DIR)/skill/documents'
 	$(RSYNC) --delete --delete-excluded \
@@ -230,6 +256,19 @@ ec2-sync-docs:
 	  $(EC2_USER)@$(EC2_HOST):$(EC2_APP_DIR)/skill/documents/
 	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo systemctl restart ontario-land-use-chat'
 	@echo "Docs synced + service restarted (cache cleared)."
+
+# Sync the gitignored skill/templates/ tree from the local repo to EC2, then
+# restart the service. Templates are read from disk on each request (no cache),
+# so the restart is just to be consistent with ec2-sync-docs. Template-only
+# update; use `make ec2-deploy` for docs + templates + code together.
+ec2-sync-templates:
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'mkdir -p $(EC2_APP_DIR)/skill/templates'
+	$(RSYNC) --delete --delete-excluded \
+	  --exclude='.DS_Store' \
+	  $(SKILL_DIR)/templates/ \
+	  $(EC2_USER)@$(EC2_HOST):$(EC2_APP_DIR)/skill/templates/
+	$(SSH) $(EC2_USER)@$(EC2_HOST) 'sudo systemctl restart ontario-land-use-chat'
+	@echo "Templates synced + service restarted."
 
 # Tail the app logs (journald) on EC2.
 ec2-logs:
