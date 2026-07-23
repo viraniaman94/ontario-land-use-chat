@@ -28,7 +28,11 @@ export PATH="$HOME/.bun/bin:$PATH"
 # A 2 GB swap file (created at provisioning) plus a raised V8 heap ceiling
 # lets the build spill to swap and finish. Keep this even after an instance
 # upgrade; it's a no-op where memory is plentiful.
-export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=2048"
+#
+# 2048 was the original setting but the build now needs >2 GB (it OOM'd at the
+# default ~972 MB heap during a deploy); 3072 lets it spill into swap and
+# completes in under a minute. Verified working 2026-07-23.
+export NODE_OPTIONS="${NODE_OPTIONS:-} --max-old-space-size=3072"
 if ! swapon --show | grep -q .; then
   log "No swap detected; creating a 2 GB swap file so the build can finish…"
   sudo fallocate -l 2G /swapfile || sudo dd if=/dev/zero of=/swapfile bs=1M count=2048
